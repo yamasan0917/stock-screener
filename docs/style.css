@@ -147,6 +147,7 @@ td.name-cell, td.spark-cell, td.fav-cell { text-align: left; }
 .pos { color: var(--green); }
 .neg { color: var(--red); }
 .badge-gc { font-size: .72rem; color: var(--green); }
+.roic-yrs { font-size: .7rem; color: var(--muted); }
 
 .links-cell a { text-decoration: none; font-size: .78rem; margin-left: 6px; color: var(--accent); }
 

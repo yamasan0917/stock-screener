@@ -15,6 +15,10 @@ const state = {
   scenarioOpt: {},       // シナリオごとの選択肢 {groupId: optionId}
 };
 
+// ROIC列の共通ツールチップ
+const ROIC_TIP = "投下資本利益率の過去平均（年数を併記）。10%以上で優良、" +
+  "↗=増加傾向。データが3年未満（上場間もない等）は参考程度に。銀行・保険は計算対象外（—）";
+
 // 列定義（key: 行データのキー / fmt: 表示整形）
 const COLUMNS = {
   value: [
@@ -24,6 +28,7 @@ const COLUMNS = {
     { key: "pbr", label: "PBR", type: "num", tip: "低いほど資産に対して割安" },
     { key: "div", label: "配当", type: "pct", tip: "配当利回り（年率・税引前）" },
     { key: "roe", label: "ROE", type: "pct", tip: "会社の稼ぐ力。8%以上で抽出" },
+    { key: "roic_avg", label: "ROIC平均", type: "roic", tip: ROIC_TIP },
     { key: "rsi", label: "RSI", type: "num", tip: "買われすぎ・売られすぎの度合い" },
     { key: "gc", label: "トレンド", type: "gc", tip: "○=25日線が50日線の上（ゴールデンクロス状態）" },
   ],
@@ -32,6 +37,7 @@ const COLUMNS = {
     { key: "close", label: "終値", type: "num", tip: "最新の終値" },
     { key: "revg", label: "売上成長", type: "pctSigned", tip: "直近四半期の前年同期比" },
     { key: "epsg", label: "EPS成長", type: "pctSigned", tip: "1株利益の前年同期比" },
+    { key: "roic_avg", label: "ROIC平均", type: "roic", tip: ROIC_TIP },
     { key: "rsi", label: "RSI", type: "num", tip: "65〜85=強い勢い" },
     { key: "cci", label: "CCI", type: "num", tip: "100以上=ブレイクアウト状態" },
     { key: "dev", label: "乖離", type: "pctSigned", tip: "25日移動平均線からの上方乖離" },
@@ -42,6 +48,7 @@ const COLUMNS = {
     { key: "div", label: "配当", type: "pct", tip: "配当利回り（年率・税引前）" },
     { key: "per", label: "PER", type: "num", tip: "低いほど利益に対して割安" },
     { key: "roe", label: "ROE", type: "pct", tip: "会社の稼ぐ力。8%以上で抽出" },
+    { key: "roic_avg", label: "ROIC平均", type: "roic", tip: ROIC_TIP },
     { key: "beta", label: "ベータ", type: "num", tip: "1未満=市場より値動きが穏やか" },
     { key: "rsi", label: "RSI", type: "num", tip: "買われすぎ・売られすぎの度合い" },
     { key: "sma200", label: "長期トレンド", type: "sma200", tip: "○=終値が200日移動平均線の上（長期上昇トレンド）" },
@@ -74,6 +81,14 @@ function fmtCell(col, r) {
     case "pctSigned": {
       const cls = v >= 0 ? "pos" : "neg";
       return `<span class="${cls}">${v >= 0 ? "+" : ""}${v.toFixed(1)}%</span>`;
+    }
+    case "roic": {
+      // 平均値 + データ年数 + 傾向矢印（例: 28.5% (4年) ↗）。ソートは平均値で行う
+      const arrow = r.roic_tr === "up" ? ' <span class="pos">↗</span>'
+        : r.roic_tr === "down" ? ' <span class="neg">↘</span>' : "";
+      const yrs = r.roic_yrs ? `<span class="roic-yrs">(${r.roic_yrs}年)</span>` : "";
+      const lowConf = (r.roic_yrs || 0) < 3 ? ' title="データ3年未満のため参考値"' : "";
+      return `<span${lowConf}>${v.toFixed(1)}% ${yrs}${arrow}</span>`;
     }
     case "gc":
       return v ? '<span class="badge-gc">○ 上昇</span>' : "△ 転換中";

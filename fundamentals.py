@@ -18,6 +18,8 @@ import time
 
 import yfinance as yf
 
+from roic import fetch_roic
+
 # .info から取得するフィールド
 _FIELDS = [
     "shortName", "sector", "currentPrice",
@@ -89,6 +91,13 @@ def fetch_fundamentals(tickers: list[str], sleep_sec: float = 0.4,
         if i % 10 == 0 or i == total:
             print(f"  ファンダメンタルズ取得: {i}/{total}")
         time.sleep(sleep_sec)  # HTTP 429 対策
+
+    # ROIC履歴（年次財務諸表ベース）を取得してマージ。
+    # 金融株などで計算できない銘柄は None のまま（足切りには使わない）
+    if results:
+        roics = fetch_roic(list(results.keys()), sleep_sec=sleep_sec)
+        for t, r in roics.items():
+            results[t].update(r)
 
     return results
 

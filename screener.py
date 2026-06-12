@@ -182,6 +182,38 @@ def fund_pass_defensive(f: dict, c) -> bool:
 # スコアリング（0〜100点 / 初心者向けの並び順の目安。売買判断そのものではない）
 # ------------------------------------------------------------
 
+def roic_bonus(f: dict) -> float:
+    """
+    ROICクオリティボーナス（0〜10点）。全戦略のスコアに加算する。
+
+    - 平均ROICがWACC代理値(8%)未満 → 0点（資本コスト未満は価値破壊圏）
+    - 8%→20%にかけて線形に最大8点（持続的な高ROIC=強いビジネス）
+    - 増加トレンドなら+2点（競争優位が強まっているシグナル）
+    - データが3年分未満（IPO直後など）は信頼度50%に割引。
+      上場直後の見かけ上の高ROICだけで上位に来ることを防ぐ
+    - 計算不能（金融株など）は0点 = 中立。減点はしない
+    """
+    avg = f.get("roic_avg")
+    if avg is None or avg < config.ROIC_WACC_PROXY:
+        return 0.0
+    span = config.ROIC_EXCELLENT - config.ROIC_WACC_PROXY
+    pts = config.ROIC_BONUS_MAX * min(1.0, (avg - config.ROIC_WACC_PROXY) / span)
+    if f.get("roic_trend") == "up":
+        pts += config.ROIC_TREND_BONUS
+    if (f.get("roic_years") or 0) < config.ROIC_MIN_YEARS:
+        pts *= 0.5
+    return pts
+
+
+def roic_display(f: dict) -> str:
+    """CLI表示用: 「59.4 (4y↗)」形式。平均値・年数・傾向を1列に集約する。"""
+    avg = f.get("roic_avg")
+    if avg is None:
+        return "-"
+    arrow = {"up": "↗", "down": "↘", "flat": "→"}.get(f.get("roic_trend"), "")
+    return f"{avg:.1f} ({f.get('roic_years')}y{arrow})"
+
+
 def score_value(s: dict, f: dict, c) -> float:
     pts = 0.0
     pts += 25.0 * max(0.0, (c.per_max - f["per"]) / c.per_max)            # PERの余裕
@@ -197,6 +229,7 @@ def score_value(s: dict, f: dict, c) -> float:
     if 45.0 <= s["rsi"] <= 60.0:
         trend += 5.0   # 過熱でも弱すぎでもない帯
     pts += trend
+    pts += roic_bonus(f)
     return round(min(pts, 100.0), 1)
 
 
@@ -208,6 +241,7 @@ def score_growth(s: dict, f: dict, c) -> float:
     pts += 20.0 * min(1.0, (s["rsi"] - c.rsi_min) / rsi_span)             # モメンタムの強さ
     dev = s["close"] / s["sma25"] - 1.0
     pts += 20.0 * max(0.0, 1.0 - dev / c.max_dev_from_sma25)              # 乖離の余地（押し目度）
+    pts += roic_bonus(f)
     return round(min(pts, 100.0), 1)
 
 
@@ -225,6 +259,7 @@ def score_defensive(s: dict, f: dict, c) -> float:
     if 40.0 <= s["rsi"] <= 60.0:
         trend += 5.0   # 過熱でも売られすぎでもない帯
     pts += trend
+    pts += roic_bonus(f)
     return round(min(pts, 100.0), 1)
 
 
@@ -250,6 +285,7 @@ def build_value_rows(passed: list[str], snaps: dict, funds: dict, c, market: str
             "PBR": round(f["pbr"], 2),
             "配当%": round(f["div_yield_pct"], 2),
             "ROE%": round(f["roe"] * 100, 1) if f["roe"] is not None else None,
+            "ROIC%": roic_display(f),
             "RSI": round(s["rsi"], 1),
             "MACD-Sig": round(s["macd_hist"], 2),
             "GC": "○" if s["sma25"] > s["sma50"] else "△",
@@ -271,6 +307,7 @@ def build_growth_rows(passed: list[str], snaps: dict, funds: dict, c, market: st
             "終値": round(s["close"], 2),
             "売上成長%": round(f["revenue_growth"] * 100, 1),
             "EPS成長%": round(f["earnings_growth"] * 100, 1),
+            "ROIC%": roic_display(f),
             "RSI": round(s["rsi"], 1),
             "CCI": round(s["cci"], 0),
             "%K": round(s["stoch_k"], 1),
@@ -296,6 +333,7 @@ def build_defensive_rows(passed: list[str], snaps: dict, funds: dict, c, market:
             "配当%": round(f["div_yield_pct"], 2),
             "PER": round(f["per"], 1),
             "ROE%": round(f["roe"] * 100, 1) if f["roe"] is not None else None,
+            "ROIC%": roic_display(f),
             "ベータ": round(f["beta"], 2) if f["beta"] is not None else None,
             "RSI": round(s["rsi"], 1),
             "200日線": "○" if above200 else "×",
