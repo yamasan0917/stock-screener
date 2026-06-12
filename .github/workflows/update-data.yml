@@ -1,0 +1,47 @@
+# 「本日のおすすめ銘柄」データ自動更新
+#
+# スケジュール（UTC表記 / 日本時間）:
+#   - 平日 07:30 UTC = 16:30 JST … 東京市場の大引け後に日本株データを反映
+#   - 平日 22:30 UTC = 翌朝 07:30 JST … NY市場の引け後に米国株データを反映
+# 日足ベースのツールなのでこれ以上の頻度で更新しても結果は変わらない。
+# 手動実行も Actions タブの「Run workflow」からいつでも可能。
+
+name: update-data
+
+on:
+  schedule:
+    - cron: "30 7 * * 1-5"   # 16:30 JST（日本市場の大引け後）
+    - cron: "30 22 * * 1-5"  # 07:30 JST（米国市場の引け後）
+  workflow_dispatch: {}
+
+permissions:
+  contents: write
+
+jobs:
+  screen:
+    runs-on: ubuntu-latest
+    timeout-minutes: 50
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Run screener and generate data
+        run: python generate_data.py
+
+      - name: Commit and push updated data
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add docs/data
+          if git diff --cached --quiet; then
+            echo "No changes to commit"
+          else
+            git commit -m "data: $(date +'%Y-%m-%d %H:%M') auto update"
+            git push
+          fi

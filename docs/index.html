@@ -1,0 +1,127 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>銘柄選定補助ツール</title>
+<meta name="description" content="日本株・米国株を毎日自動スクリーニング。バリュー株とグロース株の候補を初心者にもわかりやすく表示します。">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<header class="site-header">
+  <div class="wrap">
+    <h1>📈 銘柄選定補助ツール</h1>
+    <p class="subtitle">日本株・米国株を毎日自動スクリーニング</p>
+    <p class="updated" id="updated">データ読み込み中…</p>
+  </div>
+</header>
+
+<main class="wrap">
+
+  <!-- 市場切替 -->
+  <div class="tabs market-tabs" id="marketTabs" role="tablist">
+    <button class="tab active" data-market="JP">🇯🇵 日本株<span class="tab-count" id="countJP" hidden></span></button>
+    <button class="tab" data-market="US">🇺🇸 米国株<span class="tab-count" id="countUS" hidden></span></button>
+  </div>
+
+  <!-- 戦略切替 -->
+  <div class="strategy-cards" id="strategyTabs">
+    <button class="strategy-card active" data-strategy="value">
+      <span class="strategy-title">💎 割安×上昇開始</span>
+      <span class="strategy-desc">割安に放置されていた銘柄が上昇に転じ始めたところを狙う（バリュー株）</span>
+    </button>
+    <button class="strategy-card" data-strategy="growth">
+      <span class="strategy-title">🚀 高成長×勢い</span>
+      <span class="strategy-desc">業績が高成長で株価も強い上昇トレンドの真っ最中の銘柄（グロース株）</span>
+    </button>
+    <button class="strategy-card" data-strategy="defensive">
+      <span class="strategy-title">🛡️ 守り×安定配当</span>
+      <span class="strategy-desc">生活必需品・公益・ヘルスケアの中から値動きが穏やかで配当が厚い銘柄（ディフェンシブ株）</span>
+    </button>
+    <button class="strategy-card" data-strategy="scenario">
+      <span class="strategy-title">🌍 シナリオ別</span>
+      <span class="strategy-desc">中東情勢・米選挙・FRB・為替——あなたの相場予想に合わせた注目銘柄</span>
+    </button>
+  </div>
+
+  <!-- シナリオ別おすすめ -->
+  <section id="scenarioArea" hidden>
+    <div class="tabs scenario-tabs" id="scenarioTabs" role="tablist"></div>
+    <p class="scenario-question" id="scenarioQuestion"></p>
+    <div class="scenario-options" id="scenarioOptions"></div>
+    <p class="scenario-summary" id="scenarioSummary"></p>
+    <div class="scenario-cards" id="scenarioCards"></div>
+    <p class="scenario-note">💡 ここに表示されるのはスクリーニング結果ではなく、「この予想が当たった場合に教科書的に注目されやすい分野・銘柄」の対応表です（リスト編集: <span id="scenarioAsOf"></span>）。予想が外れれば逆方向に動く可能性があります。投資判断はご自身で。</p>
+  </section>
+
+  <!-- ツールバー -->
+  <div class="toolbar">
+    <div class="preset-toggle" id="presetToggle">
+      <button class="preset active" data-preset="standard" title="本来の厳しい基準">標準</button>
+      <button class="preset" data-preset="loose" title="条件をゆるめて「惜しい銘柄」も表示">ゆるめ</button>
+    </div>
+    <span class="preset-hint" id="presetHint"></span>
+    <input type="search" id="searchBox" placeholder="🔍 銘柄名・コードで絞り込み" autocomplete="off">
+    <label class="fav-filter"><input type="checkbox" id="favOnly"> ★のみ</label>
+  </div>
+
+  <!-- 件数表示 -->
+  <p class="count-line" id="countLine"></p>
+
+  <!-- 結果テーブル -->
+  <div class="table-scroll">
+    <table id="resultTable">
+      <thead id="tableHead"></thead>
+      <tbody id="tableBody"></tbody>
+    </table>
+  </div>
+
+  <div class="empty-state" id="emptyState" hidden>
+    <p id="emptyMsg"></p>
+  </div>
+
+  <!-- 初心者向けガイド -->
+  <details class="guide">
+    <summary>📖 はじめての方へ — この表の見方</summary>
+    <div class="guide-body">
+      <h3>4つのタブについて</h3>
+      <p><b>💎 割安×上昇開始（バリュー株）</b> — 利益や資産に対して株価が安く（PER・PBRが低い）、配当ももらえて、かつ株価が上昇に転じ始めた銘柄です。じっくり保有するスタイルに向いています。</p>
+      <p><b>🚀 高成長×勢い（グロース株）</b> — 売上・利益が大きく伸びていて、株価も強い上昇の勢いを保っている銘柄です。値動きが大きいためリスクも高めです。条件が厳しいため該当ゼロの日が多いのは正常です。なお、コカ・コーラのような成熟した安定企業が好決算の四半期に紛れ込まないよう、<b>生活必需品・公益セクターと高配当（2%超）の銘柄はグロースから除外</b>しています。</p>
+      <p><b>🛡️ 守り×安定配当（ディフェンシブ株）</b> — 景気に左右されにくい業種（生活必需品・公益・ヘルスケア）の中から、値動きが市場平均より穏やかで（ベータ1以下）、配当が厚く、長期上昇トレンドにある銘柄です。相場が不安定な時期の「守りの選択肢」です。</p>
+      <p><b>🌍 シナリオ別</b> — 「中東情勢はどうなる？」「FRBはタカ派？ハト派？」など、あなた自身の相場予想を選ぶと、その予想に対応した注目テーマ・銘柄を表示します。スクリーニングではなく教科書的な対応関係の提示です。</p>
+      <h3>各指標の意味</h3>
+      <dl class="terms">
+        <dt>スコア</dt><dd>条件をどれだけ余裕を持って満たしたかの目安（0〜100）。上昇確率の予測ではありません。同日の候補の中での「調べる優先順位」に使ってください。</dd>
+        <dt>PER（株価収益率）</dt><dd>株価が1株あたり利益の何倍か。低いほど利益に対して割安。日本株14倍以下・米国株18倍以下で抽出しています。</dd>
+        <dt>PBR（株価純資産倍率）</dt><dd>株価が1株あたり純資産の何倍か。1倍以下は会社の解散価値より安い状態。</dd>
+        <dt>配当利回り</dt><dd>株価に対して年間いくら配当がもらえるか。3%なら100万円分の株で年3万円（税引前）。</dd>
+        <dt>ROE（自己資本利益率）</dt><dd>会社の「稼ぐ力」。8%以上を条件にして、安いだけで稼げない会社（バリュートラップ）を除外しています。</dd>
+        <dt>RSI</dt><dd>買われすぎ・売られすぎの体温計（0〜100）。70以上は過熱気味、30以下は売られすぎが目安。</dd>
+        <dt>売上成長 / EPS成長</dt><dd>直近四半期の前年同期比。EPSは1株あたり利益。※通期の成長率ではない点に注意。</dd>
+        <dt>CCI / %K・%D</dt><dd>株価の勢い（モメンタム）を測る指標。CCI100以上・ストキャスティクス80以上は「強い上昇が続いている」状態。</dd>
+        <dt>乖離</dt><dd>25日移動平均線から何%上に離れているか。大きすぎる（急騰しすぎ）銘柄は除外済み。</dd>
+        <dt>ベータ</dt><dd>市場全体に対する値動きの大きさ。1なら市場並み、1未満なら市場より穏やか。ディフェンシブ株は1以下を条件にしています。</dd>
+        <dt>200日線</dt><dd>過去200営業日の平均株価。終値がこの上にあれば長期の上昇トレンドと判断します。</dd>
+      </dl>
+      <h3>使い方のコツ</h3>
+      <ul>
+        <li>「標準」で該当ゼロの日は「ゆるめ」に切り替えると、惜しい銘柄をウォッチできます。</li>
+        <li>★を付けるとブラウザに保存され、「★のみ」でいつでも見返せます。</li>
+        <li>銘柄名のリンクから Yahoo!ファイナンス等で詳細を確認してから判断しましょう。</li>
+      </ul>
+    </div>
+  </details>
+
+</main>
+
+<footer class="site-footer">
+  <div class="wrap">
+    <p>データ出所: Yahoo Finance（yfinance）/ JPX上場銘柄一覧。データは1日2回（日本市場の大引け後・米国市場の引け後）自動更新されます。</p>
+    <p class="disclaimer">⚠️ 本サイトは情報提供のみを目的としており、投資勧誘・売買推奨ではありません。掲載データの正確性は保証されません。投資判断はご自身の責任で行ってください。</p>
+  </div>
+</footer>
+
+<script src="app.js"></script>
+</body>
+</html>

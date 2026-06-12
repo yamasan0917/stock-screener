@@ -1,0 +1,218 @@
+/* 本日のおすすめ銘柄 — スタイル */
+
+:root {
+  --bg: #f6f7fb;
+  --card: #ffffff;
+  --text: #1a2233;
+  --muted: #66708a;
+  --border: #e3e6ef;
+  --accent: #2563eb;
+  --accent-soft: #e8efff;
+  --green: #16a34a;
+  --red: #dc2626;
+  --gold: #f59e0b;
+  --shadow: 0 1px 3px rgba(20, 30, 60, .08);
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #11151f;
+    --card: #1a2030;
+    --text: #e6e9f2;
+    --muted: #8a93ab;
+    --border: #2a3245;
+    --accent: #5b8cff;
+    --accent-soft: #1e2c4d;
+    --shadow: 0 1px 3px rgba(0, 0, 0, .4);
+  }
+}
+
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  font-family: "Hiragino Sans", "Yu Gothic UI", "Meiryo", system-ui, sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  line-height: 1.6;
+}
+.wrap { max-width: 1080px; margin: 0 auto; padding: 0 16px; }
+
+/* ヘッダー */
+.site-header {
+  background: linear-gradient(135deg, #1e3a8a, #2563eb);
+  color: #fff;
+  padding: 28px 0 22px;
+}
+.site-header h1 { margin: 0; font-size: 1.7rem; }
+.site-header .subtitle { margin: 4px 0 0; opacity: .85; font-size: .95rem; }
+.site-header .updated {
+  display: inline-block; margin: 10px 0 0; font-size: .82rem;
+  background: rgba(255, 255, 255, .16); border: 1px solid rgba(255, 255, 255, .3);
+  padding: 3px 12px; border-radius: 999px;
+}
+
+/* タブ */
+.tabs { display: flex; gap: 8px; margin: 20px 0 12px; }
+.tab {
+  flex: 1; padding: 10px 16px; font-size: 1rem; font-weight: 600;
+  background: var(--card); color: var(--muted);
+  border: 1px solid var(--border); border-radius: 10px;
+  cursor: pointer; box-shadow: var(--shadow);
+}
+.tab.active { background: var(--accent); border-color: var(--accent); color: #fff; }
+.tab-count {
+  display: inline-block; min-width: 1.6em; margin-left: 8px; padding: 0 7px;
+  font-size: .78rem; font-weight: 700; border-radius: 999px;
+  background: var(--accent-soft); color: var(--accent);
+}
+.tab.active .tab-count { background: rgba(255, 255, 255, .25); color: #fff; }
+
+/* 戦略カード */
+.strategy-cards { display: flex; gap: 8px; margin-bottom: 14px; flex-wrap: wrap; }
+.strategy-card {
+  flex: 1; min-width: 220px; text-align: left; padding: 12px 14px;
+  background: var(--card); border: 2px solid var(--border); border-radius: 12px;
+  cursor: pointer; box-shadow: var(--shadow); color: var(--text);
+}
+.strategy-card { --sc: #2563eb; --sc-soft: rgba(37, 99, 235, .08); }
+.strategy-card[data-strategy="growth"] { --sc: #ea580c; --sc-soft: rgba(234, 88, 12, .08); }
+.strategy-card[data-strategy="defensive"] { --sc: #16a34a; --sc-soft: rgba(22, 163, 74, .08); }
+.strategy-card[data-strategy="scenario"] { --sc: #7c3aed; --sc-soft: rgba(124, 58, 237, .08); }
+@media (prefers-color-scheme: dark) {
+  .strategy-card { --sc: #5b8cff; --sc-soft: rgba(91, 140, 255, .12); }
+  .strategy-card[data-strategy="growth"] { --sc: #fb923c; --sc-soft: rgba(251, 146, 60, .12); }
+  .strategy-card[data-strategy="defensive"] { --sc: #4ade80; --sc-soft: rgba(74, 222, 128, .12); }
+  .strategy-card[data-strategy="scenario"] { --sc: #a78bfa; --sc-soft: rgba(167, 139, 250, .12); }
+}
+.strategy-card.active { border-color: var(--sc); background: var(--sc-soft); }
+.strategy-card.active .strategy-title { color: var(--sc); }
+.strategy-title { display: block; font-weight: 700; font-size: 1.02rem; }
+.strategy-desc { display: block; font-size: .8rem; color: var(--muted); margin-top: 2px; }
+
+/* ツールバー */
+.toolbar { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-bottom: 8px; }
+.preset-toggle { display: flex; border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
+.preset {
+  padding: 7px 16px; border: none; background: var(--card);
+  color: var(--muted); font-weight: 600; cursor: pointer; font-size: .9rem;
+}
+.preset.active { background: var(--accent); color: #fff; }
+#searchBox {
+  flex: 1; min-width: 180px; padding: 8px 12px; font-size: .95rem;
+  border: 1px solid var(--border); border-radius: 8px;
+  background: var(--card); color: var(--text);
+}
+.preset-hint { font-size: .78rem; color: var(--muted); }
+.fav-filter { font-size: .9rem; color: var(--muted); white-space: nowrap; user-select: none; }
+
+.count-line { font-size: .85rem; color: var(--muted); margin: 4px 2px 8px; }
+
+/* テーブル */
+.table-scroll { overflow-x: auto; background: var(--card); border: 1px solid var(--border); border-radius: 12px; box-shadow: var(--shadow); }
+table { width: 100%; border-collapse: collapse; font-size: .9rem; min-width: 760px; }
+thead th {
+  position: sticky; top: 0;
+  background: var(--card); color: var(--muted);
+  font-size: .78rem; font-weight: 600; text-align: right;
+  padding: 10px 10px; border-bottom: 2px solid var(--border);
+  white-space: nowrap; cursor: pointer; user-select: none;
+}
+thead th.no-sort { cursor: default; }
+thead th:nth-child(1), thead th:nth-child(2), thead th:nth-child(3) { text-align: left; }
+thead th .arrow { font-size: .7rem; }
+tbody td { padding: 9px 10px; border-bottom: 1px solid var(--border); text-align: right; white-space: nowrap; }
+tbody tr:last-child td { border-bottom: none; }
+tbody tr:hover { background: var(--accent-soft); }
+td.name-cell, td.spark-cell, td.fav-cell { text-align: left; }
+
+.fav-btn { background: none; border: none; font-size: 1.1rem; cursor: pointer; color: var(--border); padding: 2px; }
+.fav-btn.on { color: var(--gold); }
+
+.stock-name { font-weight: 700; }
+.stock-name a { color: var(--text); text-decoration: none; }
+.stock-name a:hover { color: var(--accent); text-decoration: underline; }
+.stock-sub { font-size: .75rem; color: var(--muted); }
+
+.score-cell { min-width: 110px; }
+.score-bar-bg {
+  display: inline-block; width: 72px; height: 10px; vertical-align: middle;
+  background: var(--border); border-radius: 5px; overflow: hidden; margin-right: 6px;
+}
+.score-bar { display: block; height: 100%; background: var(--accent); }
+.score-bar.hi { background: var(--green); }
+.score-bar.low { background: var(--gold); }
+.score-num { font-weight: 700; font-size: .95rem; }
+.score-num.hi { color: var(--green); }
+.score-num.low { color: var(--gold); }
+
+.pos { color: var(--green); }
+.neg { color: var(--red); }
+.badge-gc { font-size: .72rem; color: var(--green); }
+
+.links-cell a { text-decoration: none; font-size: .78rem; margin-left: 6px; color: var(--accent); }
+
+/* シナリオ別おすすめ */
+.scenario-tabs { flex-wrap: wrap; margin: 4px 0 14px; }
+.scenario-tabs .tab { flex: initial; padding: 8px 14px; font-size: .9rem; }
+.scenario-question { font-weight: 700; font-size: 1.05rem; margin: 6px 2px 8px; }
+.scenario-options { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 10px; }
+.scenario-opt {
+  padding: 10px 16px; font-size: .95rem; font-weight: 600;
+  background: var(--card); color: var(--text);
+  border: 2px solid var(--border); border-radius: 10px;
+  cursor: pointer; box-shadow: var(--shadow);
+}
+.scenario-opt.active { border-color: var(--accent); background: var(--accent-soft); color: var(--accent); }
+.scenario-summary { font-size: .9rem; color: var(--muted); margin: 0 2px 14px; }
+.scenario-cards {
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  gap: 10px;
+}
+.scenario-card {
+  background: var(--card); border: 1px solid var(--border); border-radius: 12px;
+  padding: 12px 14px; box-shadow: var(--shadow);
+  display: flex; flex-direction: column;
+}
+.sc-head { display: flex; justify-content: space-between; gap: 8px; align-items: flex-start; }
+.sc-quote { text-align: right; flex-shrink: 0; }
+.sc-price { font-weight: 700; font-size: .9rem; }
+.sc-price .pos, .sc-price .neg { font-size: .78rem; margin-left: 4px; }
+.sc-tag {
+  display: inline-block; font-size: .7rem; padding: 1px 8px;
+  background: var(--accent-soft); color: var(--accent); border-radius: 999px;
+}
+.sc-reason { font-size: .84rem; color: var(--muted); margin: 8px 0 6px; flex: 1; }
+.scenario-card .links-cell a { margin-left: 0; margin-right: 10px; }
+.scenario-note {
+  font-size: .78rem; color: var(--muted); margin-top: 14px;
+  background: var(--card); border: 1px dashed var(--border); border-radius: 10px; padding: 10px 14px;
+}
+.scenario-empty { color: var(--muted); }
+
+/* 空状態 */
+.empty-state {
+  background: var(--card); border: 1px dashed var(--border); border-radius: 12px;
+  padding: 36px 20px; text-align: center; color: var(--muted); margin-top: 4px;
+}
+
+/* ガイド */
+.guide {
+  margin: 22px 0; background: var(--card);
+  border: 1px solid var(--border); border-radius: 12px; box-shadow: var(--shadow);
+}
+.guide summary { padding: 14px 18px; font-weight: 700; cursor: pointer; }
+.guide-body { padding: 0 20px 16px; font-size: .92rem; }
+.guide-body h3 { font-size: 1rem; margin: 18px 0 6px; }
+.terms dt { font-weight: 700; margin-top: 10px; }
+.terms dd { margin: 2px 0 0 0; color: var(--muted); }
+
+/* フッター */
+.site-footer { margin-top: 30px; padding: 20px 0 32px; font-size: .78rem; color: var(--muted); }
+.disclaimer { background: rgba(220, 38, 38, .06); border-left: 3px solid var(--red); padding: 8px 12px; border-radius: 4px; }
+
+/* モバイル */
+@media (max-width: 640px) {
+  .site-header h1 { font-size: 1.35rem; }
+  .strategy-cards { flex-direction: column; }
+  .strategy-desc { display: none; }
+  table { font-size: .84rem; }
+}
