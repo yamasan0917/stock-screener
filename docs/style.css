@@ -148,8 +148,43 @@ td.name-cell, td.spark-cell, td.fav-cell { text-align: left; }
 .neg { color: var(--red); }
 .badge-gc { font-size: .72rem; color: var(--green); }
 .roic-yrs { font-size: .7rem; color: var(--muted); }
+.roic-arrow { font-size: 1rem; font-weight: 700; cursor: default; }
+.roic-arrow-flat { color: var(--muted); font-size: .9rem; cursor: default; }
 
 .links-cell a { text-decoration: none; font-size: .78rem; margin-left: 6px; color: var(--accent); }
+
+/* 選定基準バナー */
+#strategyInfo { margin-bottom: 12px; }
+.criteria-box {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--accent);
+  border-radius: 10px;
+  padding: 10px 14px;
+  font-size: .82rem;
+}
+.criteria-title {
+  display: block;
+  font-weight: 700;
+  color: var(--text);
+  margin-bottom: 6px;
+}
+.criteria-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 3px 20px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.criteria-list li {
+  color: var(--muted);
+}
+.criteria-list li::before {
+  content: "✓ ";
+  color: var(--accent);
+  font-weight: 700;
+}
 
 /* シナリオ別おすすめ */
 .scenario-tabs { flex-wrap: wrap; margin: 4px 0 14px; }

@@ -15,43 +15,43 @@ const state = {
   scenarioOpt: {},       // シナリオごとの選択肢 {groupId: optionId}
 };
 
-// ROIC列の共通ツールチップ
-const ROIC_TIP = "投下資本利益率の過去平均（年数を併記）。10%以上で優良、" +
-  "↗=増加傾向。データが3年未満（上場間もない等）は参考程度に。銀行・保険は計算対象外（—）";
-
-// 列定義（key: 行データのキー / fmt: 表示整形）
+// 列定義（key: 行データのキー / type: 表示整形方法）
+// ROIC平均とROIC傾向は別列に分離（矢印が何を示すか一目で分かるように）
 const COLUMNS = {
   value: [
-    { key: "score", label: "スコア", type: "score", tip: "条件をどれだけ余裕を持って満たしたかの目安" },
+    { key: "score", label: "スコア", type: "score", tip: "条件をどれだけ余裕を持って満たしたかの目安（0〜100）" },
     { key: "close", label: "終値", type: "num", tip: "最新の終値" },
-    { key: "per", label: "PER", type: "num", tip: "低いほど利益に対して割安" },
-    { key: "pbr", label: "PBR", type: "num", tip: "低いほど資産に対して割安" },
-    { key: "div", label: "配当", type: "pct", tip: "配当利回り（年率・税引前）" },
-    { key: "roe", label: "ROE", type: "pct", tip: "会社の稼ぐ力。8%以上で抽出" },
-    { key: "roic_avg", label: "ROIC平均", type: "roic", tip: ROIC_TIP },
-    { key: "rsi", label: "RSI", type: "num", tip: "買われすぎ・売られすぎの度合い" },
-    { key: "gc", label: "トレンド", type: "gc", tip: "○=25日線が50日線の上（ゴールデンクロス状態）" },
+    { key: "per", label: "PER", type: "num", tip: "株価収益率。低いほど利益に対して割安。日本株14倍以下・米国株18倍以下で抽出" },
+    { key: "pbr", label: "PBR", type: "num", tip: "株価純資産倍率。低いほど資産に対して割安。日本株1.2倍以下・米国株2.5倍以下で抽出" },
+    { key: "div", label: "配当", type: "pct", tip: "配当利回り（年率・税引前）。日本株3%以上・米国株2%以上で抽出" },
+    { key: "roe", label: "ROE", type: "pct", tip: "自己資本利益率。会社の稼ぐ力。8%以上で抽出（バリュートラップ除外）" },
+    { key: "roic_avg", label: "ROIC平均", type: "roic_val", tip: "投下資本利益率の過去平均（括弧内はデータ年数）。10%以上が優良の目安。銀行・保険は業種特性上、計算対象外（—）" },
+    { key: "roic_avg", label: "ROIC傾向", type: "roic_trend", tip: "ROICの直近トレンド。↗=改善傾向（競争優位が強まるシグナル）、↘=悪化傾向、—=データ不足またはほぼ横ばい。スコアのボーナス点にも使用" },
+    { key: "rsi", label: "RSI", type: "num", tip: "相対力指数。40〜65の範囲で抽出（過熱も売られすぎも除外）" },
+    { key: "gc", label: "トレンド", type: "gc", tip: "○=25日線が50日線の上（ゴールデンクロス状態）。MACD好転も条件に含む" },
   ],
   growth: [
-    { key: "score", label: "スコア", type: "score", tip: "条件をどれだけ余裕を持って満たしたかの目安" },
+    { key: "score", label: "スコア", type: "score", tip: "条件をどれだけ余裕を持って満たしたかの目安（0〜100）" },
     { key: "close", label: "終値", type: "num", tip: "最新の終値" },
-    { key: "revg", label: "売上成長", type: "pctSigned", tip: "直近四半期の前年同期比" },
-    { key: "epsg", label: "EPS成長", type: "pctSigned", tip: "1株利益の前年同期比" },
-    { key: "roic_avg", label: "ROIC平均", type: "roic", tip: ROIC_TIP },
-    { key: "rsi", label: "RSI", type: "num", tip: "65〜85=強い勢い" },
-    { key: "cci", label: "CCI", type: "num", tip: "100以上=ブレイクアウト状態" },
-    { key: "dev", label: "乖離", type: "pctSigned", tip: "25日移動平均線からの上方乖離" },
+    { key: "revg", label: "売上成長", type: "pctSigned", tip: "直近四半期の前年同期比。15%以上で抽出" },
+    { key: "epsg", label: "EPS成長", type: "pctSigned", tip: "1株利益の前年同期比。20%以上で抽出" },
+    { key: "roic_avg", label: "ROIC平均", type: "roic_val", tip: "投下資本利益率の過去平均（括弧内はデータ年数）。10%以上が優良の目安。銀行・保険は業種特性上、計算対象外（—）" },
+    { key: "roic_avg", label: "ROIC傾向", type: "roic_trend", tip: "ROICの直近トレンド。↗=改善傾向（競争優位が強まるシグナル）、↘=悪化傾向、—=データ不足またはほぼ横ばい。スコアのボーナス点にも使用" },
+    { key: "rsi", label: "RSI", type: "num", tip: "相対力指数。65〜85の範囲で抽出（強い上昇モメンタムがある状態）" },
+    { key: "cci", label: "CCI", type: "num", tip: "商品チャンネル指数。100以上=ブレイクアウト状態で抽出" },
+    { key: "dev", label: "乖離", type: "pctSigned", tip: "25日移動平均線からの上方乖離率。20%超の急騰銘柄は除外済み" },
   ],
   defensive: [
-    { key: "score", label: "スコア", type: "score", tip: "条件をどれだけ余裕を持って満たしたかの目安" },
+    { key: "score", label: "スコア", type: "score", tip: "条件をどれだけ余裕を持って満たしたかの目安（0〜100）" },
     { key: "close", label: "終値", type: "num", tip: "最新の終値" },
-    { key: "div", label: "配当", type: "pct", tip: "配当利回り（年率・税引前）" },
-    { key: "per", label: "PER", type: "num", tip: "低いほど利益に対して割安" },
-    { key: "roe", label: "ROE", type: "pct", tip: "会社の稼ぐ力。8%以上で抽出" },
-    { key: "roic_avg", label: "ROIC平均", type: "roic", tip: ROIC_TIP },
-    { key: "beta", label: "ベータ", type: "num", tip: "1未満=市場より値動きが穏やか" },
-    { key: "rsi", label: "RSI", type: "num", tip: "買われすぎ・売られすぎの度合い" },
-    { key: "sma200", label: "長期トレンド", type: "sma200", tip: "○=終値が200日移動平均線の上（長期上昇トレンド）" },
+    { key: "div", label: "配当", type: "pct", tip: "配当利回り（年率・税引前）。日本株2.5%以上・米国株2%以上で抽出" },
+    { key: "per", label: "PER", type: "num", tip: "株価収益率。過度に割高な銘柄を除外（日本株18倍以下・米国株22倍以下）" },
+    { key: "roe", label: "ROE", type: "pct", tip: "自己資本利益率。8%以上で抽出（稼げない高配当銘柄を除外）" },
+    { key: "roic_avg", label: "ROIC平均", type: "roic_val", tip: "投下資本利益率の過去平均（括弧内はデータ年数）。10%以上が優良の目安。銀行・保険は業種特性上、計算対象外（—）" },
+    { key: "roic_avg", label: "ROIC傾向", type: "roic_trend", tip: "ROICの直近トレンド。↗=改善傾向（競争優位が強まるシグナル）、↘=悪化傾向、—=データ不足またはほぼ横ばい。スコアのボーナス点にも使用" },
+    { key: "beta", label: "ベータ", type: "num", tip: "1未満=市場より値動きが穏やか。1.0以下で抽出（守りの銘柄のみ）" },
+    { key: "rsi", label: "RSI", type: "num", tip: "相対力指数。35〜70の範囲で抽出" },
+    { key: "sma200", label: "長期トレンド", type: "sma200", tip: "○=終値が200日移動平均線の上（長期上昇トレンド）。これを必須条件にしている" },
   ],
 };
 
@@ -82,13 +82,21 @@ function fmtCell(col, r) {
       const cls = v >= 0 ? "pos" : "neg";
       return `<span class="${cls}">${v >= 0 ? "+" : ""}${v.toFixed(1)}%</span>`;
     }
-    case "roic": {
-      // 平均値 + データ年数 + 傾向矢印（例: 28.5% (4年) ↗）。ソートは平均値で行う
-      const arrow = r.roic_tr === "up" ? ' <span class="pos">↗</span>'
-        : r.roic_tr === "down" ? ' <span class="neg">↘</span>' : "";
-      const yrs = r.roic_yrs ? `<span class="roic-yrs">(${r.roic_yrs}年)</span>` : "";
-      const lowConf = (r.roic_yrs || 0) < 3 ? ' title="データ3年未満のため参考値"' : "";
-      return `<span${lowConf}>${v.toFixed(1)}% ${yrs}${arrow}</span>`;
+    case "roic_val": {
+      // ROIC平均値 + データ年数のみ（傾向矢印は別列「ROIC傾向」に表示）
+      const yrs = r.roic_yrs ? ` <span class="roic-yrs">(${r.roic_yrs}年)</span>` : "";
+      const lowConf = (r.roic_yrs || 0) < 3 ? ' title="データ3年未満のため参考値。値動きに注意"' : "";
+      return `<span${lowConf}>${v.toFixed(1)}%${yrs}</span>`;
+    }
+    case "roic_trend": {
+      // ROIC傾向矢印のみ（roic_avgがnull/undefinedの場合は事前の null チェックで "—" になる）
+      if (r.roic_tr === "up") {
+        return '<span class="pos roic-arrow" title="改善傾向: 直近の年次データでROICが上昇しています。競争優位が強まるポジティブシグナル">↗</span>';
+      }
+      if (r.roic_tr === "down") {
+        return '<span class="neg roic-arrow" title="悪化傾向: 直近の年次データでROICが低下しています。収益性の変化に注意">↘</span>';
+      }
+      return '<span class="roic-arrow-flat" title="横ばいまたは判定不可: データが少ない、もしくはROICがほぼ変化していません">—</span>';
     }
     case "gc":
       return v ? '<span class="badge-gc">○ 上昇</span>' : "△ 転換中";
@@ -157,6 +165,7 @@ function render() {
   document.querySelector(".toolbar").style.display = isScenario ? "none" : "";
   document.getElementById("countLine").style.display = isScenario ? "none" : "";
   document.querySelector(".table-scroll").style.display = isScenario ? "none" : "";
+  renderStrategyInfo();
   if (isScenario) {
     document.getElementById("emptyState").hidden = true;
     renderScenario();
@@ -249,6 +258,75 @@ function render() {
     empty.hidden = true;
     tableWrap.style.display = "";
   }
+}
+
+/* ---- 選定基準バナー ---- */
+
+function renderStrategyInfo() {
+  const el = document.getElementById("strategyInfo");
+  if (!el) return;
+  if (state.strategy === "scenario") { el.hidden = true; return; }
+  el.hidden = false;
+
+  const jp = state.market === "JP";
+
+  const criteria = {
+    value: {
+      label: "💎 割安×上昇開始（バリュー株）の選定基準",
+      items: jp ? [
+        "PER ≤ 14倍（利益に対して割安）",
+        "PBR ≤ 1.2倍（資産に対して割安）",
+        "配当利回り ≥ 3%",
+        "ROE ≥ 8%（バリュートラップ除外）",
+        "RSI 40〜65（過熱・売られすぎを除外）",
+        "MACD好転 ＋ ゴールデンクロス（25日線 > 50日線）",
+      ] : [
+        "PER ≤ 18倍（利益に対して割安）",
+        "PBR ≤ 2.5倍（資産に対して割安）",
+        "配当利回り ≥ 2%",
+        "ROE ≥ 8%（バリュートラップ除外）",
+        "RSI 40〜65（過熱・売られすぎを除外）",
+        "MACD好転 ＋ ゴールデンクロス（25日線 > 50日線）",
+      ],
+    },
+    growth: {
+      label: "🚀 高成長×勢い（グロース株）の選定基準",
+      items: [
+        "売上成長率 ≥ 15%（四半期の前年同期比）",
+        "EPS成長率 ≥ 20%（四半期の前年同期比）",
+        "RSI 65〜85（強い上昇モメンタム）",
+        "CCI ≥ 100（ブレイクアウト状態）",
+        "ストキャスティクス ≥ 80（トレンド継続）",
+        "25日線乖離率 ≤ 20%（急騰しすぎは除外）",
+        "除外: 生活必需品・公益セクター、配当利回り2%超",
+      ],
+    },
+    defensive: {
+      label: "🛡️ 守り×安定配当（ディフェンシブ株）の選定基準",
+      items: jp ? [
+        "業種: 生活必需品・公益・ヘルスケアのみ対象",
+        "配当利回り ≥ 2.5%（安定した収入）",
+        "PER ≤ 18倍（過度に割高な銘柄を除外）",
+        "ROE ≥ 8%（稼ぐ力がある）",
+        "ベータ ≤ 1.0（市場より値動きが穏やか）",
+        "200日移動平均線の上（長期上昇トレンド）",
+      ] : [
+        "業種: 生活必需品・公益・ヘルスケアのみ対象",
+        "配当利回り ≥ 2.0%（安定した収入）",
+        "PER ≤ 22倍（過度に割高な銘柄を除外）",
+        "ROE ≥ 8%（稼ぐ力がある）",
+        "ベータ ≤ 1.0（市場より値動きが穏やか）",
+        "200日移動平均線の上（長期上昇トレンド）",
+      ],
+    },
+  };
+
+  const c = criteria[state.strategy];
+  if (!c) { el.hidden = true; return; }
+  el.innerHTML = `<div class="criteria-box">
+    <span class="criteria-title">${c.label}</span>
+    <ul class="criteria-list">${c.items.map(i => `<li>${i}</li>`).join("")}</ul>
+  </div>`;
 }
 
 /* ---- シナリオ別おすすめ ---- */
