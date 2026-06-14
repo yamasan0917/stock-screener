@@ -224,24 +224,25 @@ def run_market(market: str, presets: dict, args, jp_names: dict) -> tuple[dict, 
     quotes = scenario_quotes(market, frames)
     print(f"[{market}] シナリオ銘柄の価格データ: {len(quotes)}/{len(scenarios.all_tickers(market))}")
 
-    # ウォッチリスト検索用データ（シナリオ銘柄 + 本日スクリーニング通過銘柄）
-    wl_candidates = set(scenarios.all_tickers(market)) | set(survivors)
+    # ウォッチリスト検索用データ（全ユニバース: 価格データが取得できた全銘柄）
     ticker_data = {}
-    for t in wl_candidates:
-        s = snaps.get(t)
+    for t, s in snaps.items():
         df = frames.get(t)
-        if s is None or df is None:
+        if df is None:
             continue
         closes = df["Close"].dropna()
         chg = (float(closes.iloc[-1]) / float(closes.iloc[-2]) - 1.0) * 100.0 if len(closes) >= 2 else None
         if market == "JP":
             name = jp_names.get(t, t.replace(".T", ""))
+            en_name = funds[t]["name"] if t in funds else ""
         else:
             fn = funds[t]["name"] if t in funds else t
             name = us_display_name(t, fn)
+            en_name = fn
         mv, ms = s.get("macd"), s.get("macd_signal")
         ticker_data[t] = {
             "n": name,
+            "en": en_name,  # 英語名（英語での検索に使用）
             "c": round(s["close"], 2),
             "g": round(chg, 2) if chg is not None else None,
             "r": round(s["rsi"], 1),

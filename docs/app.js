@@ -406,6 +406,76 @@ function renderScenario() {
     }).join("");
 }
 
+// ウォッチリストテーブルの列定義
+// スコア・ファンダ系はスクリーニング通過銘柄のみ表示（他は—）
+const WL_COLUMNS = [
+  { key: "close",    label: "終値",     type: "wl_close",   tip: "最新の終値" },
+  { key: "chg",     label: "前日比",   type: "wl_chg",     tip: "前日比（当日の値動き）" },
+  { key: "score",   label: "スコア",   type: "score",      tip: "スクリーニング通過時のスコア（0〜100）。スクリーニング対象外は—" },
+  { key: "per",     label: "PER",     type: "num",        tip: "株価収益率。スクリーニング通過銘柄のみ表示" },
+  { key: "div",     label: "配当",     type: "pct",        tip: "配当利回り（年率）。スクリーニング通過銘柄のみ表示" },
+  { key: "roe",     label: "ROE",     type: "pct",        tip: "自己資本利益率。スクリーニング通過銘柄のみ表示" },
+  { key: "roic_avg", label: "ROIC平均", type: "roic_val",   tip: "投下資本利益率の過去平均。スクリーニング通過銘柄のみ表示" },
+  { key: "roic_avg", label: "ROIC傾向", type: "roic_trend", tip: "ROICの直近トレンド。↗=改善傾向、↘=悪化傾向" },
+  { key: "rsi",     label: "RSI",     type: "num",        tip: "相対力指数（0〜100）。70以上は過熱、30以下は売られすぎが目安" },
+  { key: "gc",      label: "トレンド",  type: "gc",         tip: "○=25日線が50日線の上（ゴールデンクロス状態）" },
+];
+
+// 全プリセット・全戦略・全市場からティッカーを検索してファンダ等を返す
+function findScreeningData(ticker) {
+  if (!state.data?.presets) return null;
+  for (const preset of Object.values(state.data.presets)) {
+    for (const strategy of Object.values(preset)) {
+      for (const marketRows of Object.values(strategy)) {
+        if (!Array.isArray(marketRows)) continue;
+        const hit = marketRows.find(r => r.ticker === ticker);
+        if (hit) return hit;
+      }
+    }
+  }
+  return null;
+}
+
+// ウォッチリスト行オブジェクトを構築（ticker_data + screening data をマージ）
+function buildWatchlistRow(ticker) {
+  const td = state.data?.ticker_data?.[ticker] || null;
+  const sc = findScreeningData(ticker);
+  return {
+    ticker,
+    name: sc?.name || td?.n || ticker,
+    sector: sc?.sector || "",
+    spark: td?.sp || sc?.spark || null,
+    close: td?.c ?? sc?.close ?? null,
+    chg: td?.g ?? null,
+    rsi: td?.r ?? sc?.rsi ?? null,
+    gc: td?.gc ?? sc?.gc ?? null,
+    score: sc?.score ?? null,
+    per: sc?.per ?? null,
+    div: sc?.div ?? null,
+    roe: sc?.roe ?? null,
+    roic_avg: sc?.roic_avg ?? null,
+    roic_yrs: sc?.roic_yrs ?? null,
+    roic_tr: sc?.roic_tr ?? null,
+  };
+}
+
+// ウォッチリスト専用セル整形（市場依存の終値・前日比を個別処理、他は共通fmtCellに委譲）
+function fmtWlCell(col, r) {
+  if (col.type === "wl_close") {
+    const v = r[col.key];
+    if (v === null || v === undefined) return "—";
+    return r.ticker.endsWith(".T")
+      ? Math.round(v).toLocaleString() + "円"
+      : "$" + v.toLocaleString(undefined, { maximumFractionDigits: 2 });
+  }
+  if (col.type === "wl_chg") {
+    const v = r[col.key];
+    if (v === null || v === undefined) return "—";
+    return `<span class="${v >= 0 ? "pos" : "neg"}">${v >= 0 ? "+" : ""}${v.toFixed(2)}%</span>`;
+  }
+  return fmtCell(col, r);
+}
+
 /* ---- ウォッチリスト ---- */
 
 function fmtPrice(c, ticker) {
@@ -419,54 +489,51 @@ function renderWatchlist() {
   if (!container) return;
 
   // スクリーニング表の★ボタンと同期
-  document.querySelectorAll(".fav-btn").forEach(el => {
+  document.querySelectorAll(".fav-btn[data-t]").forEach(el => {
     el.classList.toggle("on", state.watchlist.has(el.dataset.t));
   });
 
   if (state.watchlist.size === 0) {
-    container.innerHTML = '<p class="wl-empty">★ 印や「＋ 銘柄を追加」から銘柄を登録すると、ここに常時表示されます。</p>';
+    container.innerHTML = '<p class="wl-empty">スクリーニング表の ★ か「＋ 銘柄を追加」から登録すると、ここに常時表示されます。</p>';
     return;
   }
 
-  const td = state.data?.ticker_data || {};
-  container.innerHTML = [...state.watchlist].map(ticker => {
-    const d = td[ticker];
-    const flag = ticker.endsWith(".T") ? "🇯🇵" : "🇺🇸";
-    if (!d) {
-      return `<div class="wl-card wl-nodata">
-        <div class="wl-head">
-          <div>
-            <div class="wl-name">${flag} ${ticker}</div>
-            <div class="wl-ticker">${ticker}</div>
-          </div>
-          <button class="wl-remove" data-t="${ticker}" title="削除">×</button>
-        </div>
-        <p class="wl-nodata-msg">データ更新待ち（次回バッチ実行後に反映）</p>
-      </div>`;
+  const wlRows = [...state.watchlist].map(buildWatchlistRow);
+
+  // ヘッダー
+  let th = '<tr><th class="no-sort">★</th><th class="no-sort">銘柄</th><th class="no-sort">3ヶ月チャート</th>';
+  for (const c of WL_COLUMNS) {
+    th += `<th title="${c.tip}">${c.label}</th>`;
+  }
+  th += '</tr>';
+
+  // 行
+  const tbody = wlRows.map(r => {
+    const flag = r.ticker.endsWith(".T") ? "🇯🇵" : "🇺🇸";
+    const link = r.ticker.endsWith(".T")
+      ? `https://finance.yahoo.co.jp/quote/${r.ticker}`
+      : `https://finance.yahoo.com/quote/${r.ticker}`;
+    let tds = `<td class="fav-cell"><button class="fav-btn on" data-t="${r.ticker}" title="ウォッチリストから削除（★クリック）">★</button></td>`;
+    tds += `<td class="name-cell">
+      <div class="stock-name"><a href="${link}" target="_blank" rel="noopener">${flag} ${r.name}</a></div>
+      <div class="stock-sub">${r.ticker}${r.sector ? "　" + r.sector : ""}</div>
+    </td>`;
+    tds += `<td class="spark-cell">${r.spark ? sparkSvg(r.spark) : "—"}</td>`;
+    for (const c of WL_COLUMNS) {
+      tds += `<td class="${c.type === "score" ? "score-cell" : ""}">${fmtWlCell(c, r)}</td>`;
     }
-    const chgHtml = (d.g !== null && d.g !== undefined)
-      ? ` <span class="${d.g >= 0 ? "pos" : "neg"}">${d.g >= 0 ? "+" : ""}${d.g.toFixed(2)}%</span>` : "";
-    const rsiClass = d.r >= 70 ? "neg" : d.r <= 30 ? "pos" : "";
-    const trendHtml = d.gc
-      ? '<span class="badge-gc">↑ 上昇</span>'
-      : '<span class="muted-text">→ 横ばい</span>';
-    const macdHtml = (d.macd !== null && d.macd !== undefined)
-      ? (d.macd ? ' <span class="pos">MACD+</span>' : ' <span class="muted-text">MACD-</span>') : "";
-    return `<div class="wl-card">
-      <div class="wl-head">
-        <div>
-          <div class="wl-name">${flag} ${d.n}</div>
-          <div class="wl-ticker">${ticker}</div>
-        </div>
-        <button class="wl-remove" data-t="${ticker}" title="ウォッチリストから削除">×</button>
-      </div>
-      <div class="wl-price">${fmtPrice(d.c, ticker)}${chgHtml}</div>
-      <div class="wl-spark">${sparkSvg(d.sp)}</div>
-      <div class="wl-meta">RSI <span class="${rsiClass}">${d.r}</span>　${trendHtml}${macdHtml}</div>
-    </div>`;
+    return `<tr>${tds}</tr>`;
   }).join("");
 
-  container.querySelectorAll(".wl-remove").forEach(el => {
+  container.innerHTML = `<div class="table-scroll">
+    <table>
+      <thead>${th}</thead>
+      <tbody>${tbody}</tbody>
+    </table>
+  </div>`;
+
+  // ★クリックでウォッチリストから削除
+  container.querySelectorAll(".fav-btn").forEach(el => {
     el.addEventListener("click", () => {
       state.watchlist.delete(el.dataset.t);
       localStorage.setItem("watchlist", JSON.stringify([...state.watchlist]));
@@ -484,7 +551,11 @@ function watchlistSearch(query) {
 
   const td = state.data?.ticker_data || {};
   const matches = Object.entries(td)
-    .filter(([t, d]) => t.toLowerCase().includes(q) || (d.n || "").toLowerCase().includes(q))
+    .filter(([t, d]) =>
+      t.toLowerCase().includes(q) ||
+      (d.n || "").toLowerCase().includes(q) ||
+      (d.en || "").toLowerCase().includes(q)
+    )
     .slice(0, 8);
 
   dropdown.hidden = false;
