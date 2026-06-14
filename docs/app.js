@@ -6,11 +6,11 @@ const state = {
   market: "JP",
   strategy: "value",
   preset: "standard",
-  search: "",
-  favOnly: false,
   sortKey: "score",
   sortDesc: true,
-  favorites: new Set(JSON.parse(localStorage.getItem("favorites") || "[]")),
+  watchlist: new Set(JSON.parse(
+    localStorage.getItem("watchlist") || localStorage.getItem("favorites") || "[]"
+  )),
   scenarioGroup: null,   // 選択中のシナリオ（中東情勢など）
   scenarioOpt: {},       // シナリオごとの選択肢 {groupId: optionId}
 };
@@ -25,6 +25,7 @@ const COLUMNS = {
     { key: "pbr", label: "PBR", type: "num", tip: "株価純資産倍率。低いほど資産に対して割安。日本株1.2倍以下・米国株2.5倍以下で抽出" },
     { key: "div", label: "配当", type: "pct", tip: "配当利回り（年率・税引前）。日本株3%以上・米国株2%以上で抽出" },
     { key: "roe", label: "ROE", type: "pct", tip: "自己資本利益率。会社の稼ぐ力。8%以上で抽出（バリュートラップ除外）" },
+    { key: "de", label: "D/E", type: "de_ratio", tip: "負債÷自己資本の比率。借金の多さの目安。2倍超は要確認。銀行・保険・公益は業種特性上、高くなりやすい" },
     { key: "roic_avg", label: "ROIC平均", type: "roic_val", tip: "投下資本利益率の過去平均（括弧内はデータ年数）。10%以上が優良の目安。銀行・保険は業種特性上、計算対象外（—）" },
     { key: "roic_avg", label: "ROIC傾向", type: "roic_trend", tip: "ROICの直近トレンド。↗=改善傾向（競争優位が強まるシグナル）、↘=悪化傾向、—=データ不足またはほぼ横ばい。スコアのボーナス点にも使用" },
     { key: "rsi", label: "RSI", type: "num", tip: "相対力指数。40〜65の範囲で抽出（過熱も売られすぎも除外）" },
@@ -45,6 +46,7 @@ const COLUMNS = {
     { key: "score", label: "スコア", type: "score", tip: "条件をどれだけ余裕を持って満たしたかの目安（0〜100）" },
     { key: "close", label: "終値", type: "num", tip: "最新の終値" },
     { key: "div", label: "配当", type: "pct", tip: "配当利回り（年率・税引前）。日本株2.5%以上・米国株2%以上で抽出" },
+    { key: "payout", label: "配当性向", type: "payout", tip: "配当性向 = 配当額÷純利益。85%超は減配リスクゾーン（スコア－5点）、100%超はタコ足配当（利益以上の配当）で要注意（スコア－15点）" },
     { key: "per", label: "PER", type: "num", tip: "株価収益率。過度に割高な銘柄を除外（日本株18倍以下・米国株22倍以下）" },
     { key: "roe", label: "ROE", type: "pct", tip: "自己資本利益率。8%以上で抽出（稼げない高配当銘柄を除外）" },
     { key: "roic_avg", label: "ROIC平均", type: "roic_val", tip: "投下資本利益率の過去平均（括弧内はデータ年数）。10%以上が優良の目安。銀行・保険は業種特性上、計算対象外（—）" },
@@ -97,6 +99,16 @@ function fmtCell(col, r) {
         return '<span class="neg roic-arrow" title="悪化傾向: 直近の年次データでROICが低下しています。収益性の変化に注意">↘</span>';
       }
       return '<span class="roic-arrow-flat" title="横ばいまたは判定不可: データが少ない、もしくはROICがほぼ変化していません">—</span>';
+    }
+    case "de_ratio": {
+      // D/E比率: 2倍超は赤、1倍超は琥珀色で警告
+      const cls = v >= 2.0 ? "neg" : v >= 1.0 ? "warn" : "";
+      return `<span class="${cls}">${v.toFixed(1)}x</span>`;
+    }
+    case "payout": {
+      // 配当性向: 100%超は赤（タコ足）、85%超は琥珀（要注意）
+      const cls = v > 100 ? "neg" : v > 85 ? "warn" : "";
+      return `<span class="${cls}">${v.toFixed(0)}%</span>`;
     }
     case "gc":
       return v ? '<span class="badge-gc">○ 上昇</span>' : "△ 転換中";
@@ -192,16 +204,8 @@ function render() {
     });
   });
 
-  // 行のフィルタ・ソート
+  // 行のソート
   let list = rows().slice();
-  const q = state.search.trim().toLowerCase();
-  if (q) {
-    list = list.filter(r =>
-      r.ticker.toLowerCase().includes(q) ||
-      (r.name || "").toLowerCase().includes(q) ||
-      (r.name_en || "").toLowerCase().includes(q));
-  }
-  if (state.favOnly) list = list.filter(r => state.favorites.has(r.ticker));
   list.sort((a, b) => {
     const av = a[state.sortKey], bv = b[state.sortKey];
     const an = (av === null || av === undefined) ? -Infinity : +av;
@@ -212,8 +216,8 @@ function render() {
   // 本体
   const body = document.getElementById("tableBody");
   body.innerHTML = list.map(r => {
-    const fav = state.favorites.has(r.ticker);
-    let tds = `<td class="fav-cell"><button class="fav-btn ${fav ? "on" : ""}" data-t="${r.ticker}" aria-label="お気に入り">★</button></td>`;
+    const fav = state.watchlist.has(r.ticker);
+    let tds = `<td class="fav-cell"><button class="fav-btn ${fav ? "on" : ""}" data-t="${r.ticker}" title="ウォッチリストに追加/削除" aria-label="ウォッチリストに追加/削除">★</button></td>`;
     tds += `<td class="name-cell"><div class="stock-name"><a href="${primaryLink(r)}" target="_blank" rel="noopener">${r.name}</a></div>` +
            `<div class="stock-sub">${r.ticker}　${r.sector || ""}</div></td>`;
     tds += `<td class="spark-cell">${sparkSvg(r.spark)}</td>`;
@@ -225,9 +229,10 @@ function render() {
   body.querySelectorAll(".fav-btn").forEach(el => {
     el.addEventListener("click", () => {
       const t = el.dataset.t;
-      state.favorites.has(t) ? state.favorites.delete(t) : state.favorites.add(t);
-      localStorage.setItem("favorites", JSON.stringify([...state.favorites]));
-      render();
+      state.watchlist.has(t) ? state.watchlist.delete(t) : state.watchlist.add(t);
+      localStorage.setItem("watchlist", JSON.stringify([...state.watchlist]));
+      el.classList.toggle("on", state.watchlist.has(t));
+      renderWatchlist();
     });
   });
 
@@ -241,8 +246,7 @@ function render() {
     : "基準をゆるめて惜しい銘柄も表示";
   updateMarketCounts();
   document.getElementById("countLine").textContent =
-    `${mkt} / ${strat} / ${presetName}基準 — ${total}銘柄ヒット` +
-    (list.length !== total ? `（絞り込み表示: ${list.length}件）` : "");
+    `${mkt} / ${strat} / ${presetName}基準 — ${total}銘柄ヒット`;
 
   const empty = document.getElementById("emptyState");
   const tableWrap = document.querySelector(".table-scroll");
@@ -250,10 +254,9 @@ function render() {
     empty.hidden = false;
     tableWrap.style.display = "none";
     document.getElementById("emptyMsg").textContent =
-      state.favOnly ? "★を付けた銘柄がこの条件にはありません。"
-      : (state.preset === "standard"
+      state.preset === "standard"
         ? "本日は標準基準を満たす銘柄がありません（厳しい基準なので珍しくありません）。「ゆるめ」に切り替えると惜しい銘柄を確認できます。"
-        : "本日はゆるめ基準でも該当がありません。");
+        : "本日はゆるめ基準でも該当がありません。";
   } else {
     empty.hidden = true;
     tableWrap.style.display = "";
@@ -280,6 +283,7 @@ function renderStrategyInfo() {
         "ROE ≥ 8%（バリュートラップ除外）",
         "RSI 40〜65（過熱・売られすぎを除外）",
         "MACD好転 ＋ ゴールデンクロス（25日線 > 50日線）",
+        "参考表示: D/E比率（負債÷自己資本）— 1倍超は注意",
       ] : [
         "PER ≤ 18倍（利益に対して割安）",
         "PBR ≤ 2.5倍（資産に対して割安）",
@@ -287,7 +291,9 @@ function renderStrategyInfo() {
         "ROE ≥ 8%（バリュートラップ除外）",
         "RSI 40〜65（過熱・売られすぎを除外）",
         "MACD好転 ＋ ゴールデンクロス（25日線 > 50日線）",
+        "参考表示: D/E比率（負債÷自己資本）— 2倍超は要確認",
       ],
+      score: "スコア内訳（最大100点）: PERの割安度 最大25点 ＋ PBRの割安度 最大25点 ＋ 配当の厚み 最大25点 ＋ トレンドシグナル 最大20点 ＋ ROICボーナス 最大10点",
     },
     growth: {
       label: "🚀 高成長×勢い（グロース株）の選定基準",
@@ -299,7 +305,9 @@ function renderStrategyInfo() {
         "ストキャスティクス ≥ 80（トレンド継続）",
         "25日線乖離率 ≤ 20%（急騰しすぎは除外）",
         "除外: 生活必需品・公益セクター、配当利回り2%超",
+        "※ 直近1四半期の数値のため特別利益による一時的なEPS急増が混ざる可能性あり",
       ],
+      score: "スコア内訳（最大100点）: 売上成長の強さ 最大30点 ＋ EPS成長の強さ 最大30点 ＋ モメンタムの強さ 最大20点 ＋ 押し目度（急騰しすぎでない） 最大20点 ＋ ROICボーナス 最大10点",
     },
     defensive: {
       label: "🛡️ 守り×安定配当（ディフェンシブ株）の選定基準",
@@ -310,6 +318,7 @@ function renderStrategyInfo() {
         "ROE ≥ 8%（稼ぐ力がある）",
         "ベータ ≤ 1.0（市場より値動きが穏やか）",
         "200日移動平均線の上（長期上昇トレンド）",
+        "配当性向 85%超はスコア－5点、100%超はスコア－15点（タコ足配当リスク）",
       ] : [
         "業種: 生活必需品・公益・ヘルスケアのみ対象",
         "配当利回り ≥ 2.0%（安定した収入）",
@@ -317,15 +326,21 @@ function renderStrategyInfo() {
         "ROE ≥ 8%（稼ぐ力がある）",
         "ベータ ≤ 1.0（市場より値動きが穏やか）",
         "200日移動平均線の上（長期上昇トレンド）",
+        "配当性向 85%超はスコア－5点、100%超はスコア－15点（タコ足配当リスク）",
       ],
+      score: "スコア内訳（最大100点）: 配当の厚み 最大35点 ＋ 値動きの穏やかさ（ベータ） 最大25点 ＋ 割高でない（PER） 最大20点 ＋ トレンドシグナル 最大20点 ＋ ROICボーナス 最大10点。配当性向85%超で－5点・100%超で－15点",
     },
   };
 
   const c = criteria[state.strategy];
   if (!c) { el.hidden = true; return; }
+  // 除外ルール・参考情報・注意書きはチェックマークなしで表示
+  const isNote = i => i.startsWith("参考") || i.startsWith("除外") || i.startsWith("※");
   el.innerHTML = `<div class="criteria-box">
     <span class="criteria-title">${c.label}</span>
-    <ul class="criteria-list">${c.items.map(i => `<li>${i}</li>`).join("")}</ul>
+    <ul class="criteria-list">${c.items.map(i =>
+      `<li${isNote(i) ? ' class="criteria-note"' : ""}>${i}</li>`).join("")}</ul>
+    <p class="score-breakdown">📊 ${c.score}</p>
   </div>`;
 }
 
@@ -391,6 +406,112 @@ function renderScenario() {
     }).join("");
 }
 
+/* ---- ウォッチリスト ---- */
+
+function fmtPrice(c, ticker) {
+  return ticker.endsWith(".T")
+    ? Math.round(c).toLocaleString() + "円"
+    : "$" + c.toLocaleString(undefined, { maximumFractionDigits: 2 });
+}
+
+function renderWatchlist() {
+  const container = document.getElementById("watchlistCards");
+  if (!container) return;
+
+  // スクリーニング表の★ボタンと同期
+  document.querySelectorAll(".fav-btn").forEach(el => {
+    el.classList.toggle("on", state.watchlist.has(el.dataset.t));
+  });
+
+  if (state.watchlist.size === 0) {
+    container.innerHTML = '<p class="wl-empty">★ 印や「＋ 銘柄を追加」から銘柄を登録すると、ここに常時表示されます。</p>';
+    return;
+  }
+
+  const td = state.data?.ticker_data || {};
+  container.innerHTML = [...state.watchlist].map(ticker => {
+    const d = td[ticker];
+    const flag = ticker.endsWith(".T") ? "🇯🇵" : "🇺🇸";
+    if (!d) {
+      return `<div class="wl-card wl-nodata">
+        <div class="wl-head">
+          <div>
+            <div class="wl-name">${flag} ${ticker}</div>
+            <div class="wl-ticker">${ticker}</div>
+          </div>
+          <button class="wl-remove" data-t="${ticker}" title="削除">×</button>
+        </div>
+        <p class="wl-nodata-msg">データ更新待ち（次回バッチ実行後に反映）</p>
+      </div>`;
+    }
+    const chgHtml = (d.g !== null && d.g !== undefined)
+      ? ` <span class="${d.g >= 0 ? "pos" : "neg"}">${d.g >= 0 ? "+" : ""}${d.g.toFixed(2)}%</span>` : "";
+    const rsiClass = d.r >= 70 ? "neg" : d.r <= 30 ? "pos" : "";
+    const trendHtml = d.gc
+      ? '<span class="badge-gc">↑ 上昇</span>'
+      : '<span class="muted-text">→ 横ばい</span>';
+    const macdHtml = (d.macd !== null && d.macd !== undefined)
+      ? (d.macd ? ' <span class="pos">MACD+</span>' : ' <span class="muted-text">MACD-</span>') : "";
+    return `<div class="wl-card">
+      <div class="wl-head">
+        <div>
+          <div class="wl-name">${flag} ${d.n}</div>
+          <div class="wl-ticker">${ticker}</div>
+        </div>
+        <button class="wl-remove" data-t="${ticker}" title="ウォッチリストから削除">×</button>
+      </div>
+      <div class="wl-price">${fmtPrice(d.c, ticker)}${chgHtml}</div>
+      <div class="wl-spark">${sparkSvg(d.sp)}</div>
+      <div class="wl-meta">RSI <span class="${rsiClass}">${d.r}</span>　${trendHtml}${macdHtml}</div>
+    </div>`;
+  }).join("");
+
+  container.querySelectorAll(".wl-remove").forEach(el => {
+    el.addEventListener("click", () => {
+      state.watchlist.delete(el.dataset.t);
+      localStorage.setItem("watchlist", JSON.stringify([...state.watchlist]));
+      document.querySelectorAll(`.fav-btn[data-t="${el.dataset.t}"]`).forEach(b => b.classList.remove("on"));
+      renderWatchlist();
+    });
+  });
+}
+
+function watchlistSearch(query) {
+  const q = query.trim().toLowerCase();
+  const dropdown = document.getElementById("watchlistDropdown");
+  if (!dropdown) return;
+  if (q.length < 1) { dropdown.hidden = true; return; }
+
+  const td = state.data?.ticker_data || {};
+  const matches = Object.entries(td)
+    .filter(([t, d]) => t.toLowerCase().includes(q) || (d.n || "").toLowerCase().includes(q))
+    .slice(0, 8);
+
+  dropdown.hidden = false;
+  dropdown.innerHTML = matches.length === 0
+    ? '<li class="wl-no-result">該当なし</li>'
+    : matches.map(([ticker, d]) => {
+        const flag = ticker.endsWith(".T") ? "🇯🇵" : "🇺🇸";
+        const price = d.c ? ` — ${fmtPrice(d.c, ticker)}` : "";
+        const added = state.watchlist.has(ticker);
+        return `<li class="wl-result-item${added ? " wl-added" : ""}" data-t="${ticker}">
+          <span class="wl-result-name">${flag} ${d.n}</span>
+          <span class="wl-result-meta">${ticker}${price}${added ? " ✓" : ""}</span>
+        </li>`;
+      }).join("");
+
+  dropdown.querySelectorAll("li[data-t]").forEach(el => {
+    el.addEventListener("click", () => {
+      state.watchlist.add(el.dataset.t);
+      localStorage.setItem("watchlist", JSON.stringify([...state.watchlist]));
+      renderWatchlist();
+      document.getElementById("watchlistInput").value = "";
+      dropdown.hidden = true;
+      document.getElementById("watchlistSearchWrap").hidden = true;
+    });
+  });
+}
+
 function bindTabs(containerId, attr, stateKey) {
   document.querySelectorAll(`#${containerId} [data-${attr}]`).forEach(el => {
     el.addEventListener("click", () => {
@@ -408,14 +529,25 @@ async function init() {
   bindTabs("marketTabs", "market", "market");
   bindTabs("strategyTabs", "strategy", "strategy");
   bindTabs("presetToggle", "preset", "preset");
-  document.getElementById("searchBox").addEventListener("input", e => {
-    state.search = e.target.value;
-    render();
+
+  // ウォッチリスト操作
+  document.getElementById("watchlistAddBtn").addEventListener("click", () => {
+    const area = document.getElementById("watchlistSearchWrap");
+    area.hidden = !area.hidden;
+    if (!area.hidden) document.getElementById("watchlistInput").focus();
   });
-  document.getElementById("favOnly").addEventListener("change", e => {
-    state.favOnly = e.target.checked;
-    render();
+  document.getElementById("watchlistInput").addEventListener("input", e => {
+    watchlistSearch(e.target.value);
   });
+  document.addEventListener("click", e => {
+    if (!e.target.closest("#watchlistSection")) {
+      const dd = document.getElementById("watchlistDropdown");
+      if (dd) dd.hidden = true;
+    }
+  });
+
+  // ウォッチリストは localStorage のデータだけでも描画できる（データロード前）
+  renderWatchlist();
 
   try {
     const res = await fetch(`data/latest.json?v=${Date.now()}`);
@@ -426,9 +558,15 @@ async function init() {
       .filter(k => m[k]?.data_date)
       .map(k => `${k === "JP" ? "日本株" : "米国株"}: ${m[k].data_date}終値`)
       .join(" / ");
+    const ver = state.data.version ? ` / v${state.data.version}` : "";
     document.getElementById("updated").textContent =
-      `更新: ${state.data.generated_at}（${dates}）`;
+      `更新: ${state.data.generated_at}（${dates}${ver}）`;
+    if (state.data.version) {
+      const vb = document.getElementById("verBadge");
+      if (vb) vb.textContent = `v${state.data.version}`;
+    }
     render();
+    renderWatchlist();
   } catch (e) {
     document.getElementById("updated").textContent = "データの読み込みに失敗しました。時間をおいて再読み込みしてください。";
     console.error(e);

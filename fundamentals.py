@@ -27,6 +27,8 @@ _FIELDS = [
     "dividendYield", "trailingAnnualDividendRate",
     "returnOnEquity", "revenueGrowth", "earningsGrowth",
     "marketCap", "beta",
+    "payoutRatio",    # 配当性向（小数: 0.65 = 65%）。タコ足配当チェック用
+    "debtToEquity",   # D/E比率（% 表記: 123.45 = 1.23x）。バリュー株の負債チェック用
 ]
 
 
@@ -87,6 +89,8 @@ def fetch_fundamentals(tickers: list[str], sleep_sec: float = 0.4,
             "earnings_growth": _to_float(raw["earningsGrowth"]),  # 小数・直近四半期YoY
             "market_cap": _to_float(raw["marketCap"]),
             "beta": _to_float(raw["beta"]),  # 市場全体に対する値動きの大きさ（1未満=穏やか）
+            "payout_ratio": _to_float(raw["payoutRatio"]),    # 小数 (0.65 = 65%)。None=無配or未取得
+            "debt_to_equity": _to_float(raw["debtToEquity"]), # % 表記 (123.45 = D/E 1.23x)
         }
         if i % 10 == 0 or i == total:
             print(f"  ファンダメンタルズ取得: {i}/{total}")

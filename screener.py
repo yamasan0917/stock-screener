@@ -260,7 +260,14 @@ def score_defensive(s: dict, f: dict, c) -> float:
         trend += 5.0   # 過熱でも売られすぎでもない帯
     pts += trend
     pts += roic_bonus(f)
-    return round(min(pts, 100.0), 1)
+    # 配当性向ペナルティ: 利益以上の配当（タコ足配当）はディフェンシブとして危険
+    payout = f.get("payout_ratio")
+    if payout is not None:
+        if payout > 1.0:    # 100%超 = 利益以上に配当→減配リスク大
+            pts -= 15.0
+        elif payout > 0.85:  # 85%超 = 要注意ゾーン
+            pts -= 5.0
+    return round(max(0.0, min(pts, 100.0)), 1)
 
 
 # ------------------------------------------------------------

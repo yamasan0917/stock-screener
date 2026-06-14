@@ -8,7 +8,13 @@ docs/data/latest.json に書き出す。GitHub Actions / タスクスケジュ�
 
 実行: python generate_data.py            # 拡張ユニバース（約2,000銘柄・10分前後）
       python generate_data.py --limit 30 # 動作確認用
+
+VERSION 履歴:
+  3.0.0 — ウェブ版初期リリース（戦略タブ・シナリオ・ROIC）
+  3.1.0 — ウォッチリスト機能追加・セクションUI分離・D/E・配当性向・SemVer導入
 """
+
+VERSION = "3.1.0"
 
 import argparse
 import json
@@ -53,6 +59,7 @@ def display_name(ticker: str, market: str, fund: dict, jp_names: dict) -> str:
 
 
 def value_row(t, s, f, c, market, jp_names, spark):
+    de_raw = f.get("debt_to_equity")
     return {
         "ticker": t,
         "name": display_name(t, market, f, jp_names),
@@ -65,6 +72,7 @@ def value_row(t, s, f, c, market, jp_names, spark):
         "pbr": round(f["pbr"], 2),
         "div": round(f["div_yield_pct"], 2),
         "roe": round(f["roe"] * 100, 1) if f["roe"] is not None else None,
+        "de": round(de_raw / 100.0, 2) if de_raw is not None else None,  # D/E比率(倍)に変換
         "roic_avg": f.get("roic_avg"),
         "roic_yrs": f.get("roic_years"),
         "roic_tr": f.get("roic_trend"),
@@ -98,6 +106,7 @@ def growth_row(t, s, f, c, market, jp_names, spark):
 
 
 def defensive_row(t, s, f, c, market, jp_names, spark):
+    pr = f.get("payout_ratio")
     return {
         "ticker": t,
         "name": display_name(t, market, f, jp_names),
@@ -107,6 +116,7 @@ def defensive_row(t, s, f, c, market, jp_names, spark):
         "score": score_defensive(s, f, c),
         "spark": spark,
         "div": round(f["div_yield_pct"], 2),
+        "payout": round(pr * 100.0, 1) if pr is not None else None,  # 配当性向（%）
         "per": round(f["per"], 1),
         "roe": round(f["roe"] * 100, 1) if f["roe"] is not None else None,
         "roic_avg": f.get("roic_avg"),
@@ -138,8 +148,8 @@ def scenario_quotes(market: str, frames: dict) -> dict[str, dict]:
     return quotes
 
 
-def run_market(market: str, presets: dict, args, jp_names: dict) -> tuple[dict, dict, dict]:
-    """市場ごとに 全プリセット×全戦略 の結果を作る。(results, stats, scenario_quotes) を返す。"""
+def run_market(market: str, presets: dict, args, jp_names: dict) -> tuple[dict, dict, dict, dict]:
+    """市場ごとに 全プリセット×全戦略 の結果を作る。(results, stats, scenario_quotes, ticker_data) を返す。"""
     wl_file = BASE_DIR / ("watchlist_us.txt" if market == "US" else "watchlist_jp.txt")
     watchlist = load_universe_file(str(wl_file), market) if wl_file.exists() else []
     if market == "US":
@@ -213,7 +223,34 @@ def run_market(market: str, presets: dict, args, jp_names: dict) -> tuple[dict, 
     }
     quotes = scenario_quotes(market, frames)
     print(f"[{market}] シナリオ銘柄の価格データ: {len(quotes)}/{len(scenarios.all_tickers(market))}")
-    return results, stats, quotes
+
+    # ウォッチリスト検索用データ（シナリオ銘柄 + 本日スクリーニング通過銘柄）
+    wl_candidates = set(scenarios.all_tickers(market)) | set(survivors)
+    ticker_data = {}
+    for t in wl_candidates:
+        s = snaps.get(t)
+        df = frames.get(t)
+        if s is None or df is None:
+            continue
+        closes = df["Close"].dropna()
+        chg = (float(closes.iloc[-1]) / float(closes.iloc[-2]) - 1.0) * 100.0 if len(closes) >= 2 else None
+        if market == "JP":
+            name = jp_names.get(t, t.replace(".T", ""))
+        else:
+            fn = funds[t]["name"] if t in funds else t
+            name = us_display_name(t, fn)
+        mv, ms = s.get("macd"), s.get("macd_signal")
+        ticker_data[t] = {
+            "n": name,
+            "c": round(s["close"], 2),
+            "g": round(chg, 2) if chg is not None else None,
+            "r": round(s["rsi"], 1),
+            "gc": bool(s["sma25"] > s["sma50"]),
+            "macd": bool(mv > ms) if (mv is not None and ms is not None) else None,
+            "sp": sparkline(df),
+        }
+    print(f"[{market}] ウォッチリスト用データ: {len(ticker_data)}銘柄")
+    return results, stats, quotes, ticker_data
 
 
 def main():
@@ -239,15 +276,19 @@ def main():
         "presets": {p: {"value": {}, "growth": {}, "defensive": {}} for p in presets},
     }
     all_quotes: dict[str, dict] = {}
+    all_ticker_data: dict[str, dict] = {}
     for m in markets:
-        results, stats, quotes = run_market(m, presets, args, jp_names)
+        results, stats, quotes, ticker_data = run_market(m, presets, args, jp_names)
         payload["markets"][m] = stats
         all_quotes.update(quotes)
+        all_ticker_data.update(ticker_data)
         for pname, out in results.items():
             payload["presets"][pname]["value"][m] = out["value"]
             payload["presets"][pname]["growth"][m] = out["growth"]
             payload["presets"][pname]["defensive"][m] = out["defensive"]
     payload["scenarios"] = scenarios.build_payload(all_quotes)
+    payload["ticker_data"] = all_ticker_data
+    payload["version"] = VERSION
 
     DOCS_DATA_DIR.mkdir(parents=True, exist_ok=True)
     latest = DOCS_DATA_DIR / "latest.json"
