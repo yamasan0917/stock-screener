@@ -526,31 +526,37 @@ td.name-cell, td.spark-cell, td.fav-cell { text-align: left; }
   border-color: var(--watchlist);
   box-shadow: 0 0 0 3px rgba(124,58,237,.12);
 }
+/* 親パネルの overflow:hidden に切り取られないよう position:fixed にし、
+   表示位置は JS (positionWatchlistDropdown) で入力欄に合わせて指定する。
+   候補が多い場合は max-height で打ち切り、内部スクロールで全件たどれる。 */
 .wl-dropdown {
-  position: absolute;
-  top: calc(100% + 4px);
-  left: 0; right: 0;
+  position: fixed;
+  margin: 0;
+  padding: 4px;
+  max-height: 340px;
+  overflow-y: auto;
   background: var(--card);
   border: 1px solid var(--border);
   border-radius: var(--r-btn);
   box-shadow: var(--shadow-md);
   list-style: none;
-  z-index: 100;
-  overflow: hidden;
+  z-index: 1000;
+  overscroll-behavior: contain;
 }
 .wl-result-item {
-  padding: 10px 14px;
+  padding: 9px 12px;
   cursor: pointer;
   display: flex;
   justify-content: space-between;
   align-items: center;
   gap: 8px;
-  border-bottom: 1px solid var(--border);
+  border-radius: calc(var(--r-btn) - 4px);
   font-size: .87rem;
   transition: background 100ms;
 }
-.wl-result-item:last-child { border-bottom: none; }
-.wl-result-item:hover { background: var(--accent-soft); }
+.wl-result-item:hover,
+.wl-result-item.wl-active { background: var(--accent-soft); }
+.wl-result-item.wl-active { box-shadow: inset 0 0 0 1.5px var(--watchlist); }
 .wl-result-item.wl-added { color: var(--muted); }
 .wl-result-name { font-weight: 600; }
 .wl-result-meta { font-size: .74rem; color: var(--muted); font-variant-numeric: tabular-nums; }

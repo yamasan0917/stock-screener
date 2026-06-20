@@ -551,44 +551,110 @@ function renderWatchlist() {
   });
 }
 
+// 検索候補の状態（キーボード操作で使う）
+let wlMatches = [];    // [[ticker, data], ...]
+let wlActiveIdx = -1;  // ハイライト中の候補インデックス
+
 function watchlistSearch(query) {
   const q = query.trim().toLowerCase();
   const dropdown = document.getElementById("watchlistDropdown");
   if (!dropdown) return;
-  if (q.length < 1) { dropdown.hidden = true; return; }
+  if (q.length < 1) { closeWatchlistDropdown(); return; }
 
   const td = state.data?.ticker_data || {};
-  const matches = Object.entries(td)
+  wlMatches = Object.entries(td)
     .filter(([t, d]) =>
       t.toLowerCase().includes(q) ||
       (d.n || "").toLowerCase().includes(q) ||
       (d.en || "").toLowerCase().includes(q)
     )
-    .slice(0, 8);
+    .slice(0, 30);  // 多めに出し、はみ出す分は内部スクロールでたどれる
+  wlActiveIdx = wlMatches.length ? 0 : -1;
+  renderWatchlistDropdown();
+}
 
+function renderWatchlistDropdown() {
+  const dropdown = document.getElementById("watchlistDropdown");
+  if (!dropdown) return;
   dropdown.hidden = false;
-  dropdown.innerHTML = matches.length === 0
-    ? '<li class="wl-no-result">該当なし</li>'
-    : matches.map(([ticker, d]) => {
-        const flag = ticker.endsWith(".T") ? "🇯🇵" : "🇺🇸";
-        const price = d.c ? ` — ${fmtPrice(d.c, ticker)}` : "";
-        const added = state.watchlist.has(ticker);
-        return `<li class="wl-result-item${added ? " wl-added" : ""}" data-t="${ticker}">
-          <span class="wl-result-name">${flag} ${d.n}</span>
-          <span class="wl-result-meta">${ticker}${price}${added ? " ✓" : ""}</span>
-        </li>`;
-      }).join("");
-
+  if (wlMatches.length === 0) {
+    dropdown.innerHTML = '<li class="wl-no-result">該当なし</li>';
+    positionWatchlistDropdown();
+    return;
+  }
+  dropdown.innerHTML = wlMatches.map(([ticker, d], i) => {
+    const flag = ticker.endsWith(".T") ? "🇯🇵" : "🇺🇸";
+    const price = d.c ? ` — ${fmtPrice(d.c, ticker)}` : "";
+    const added = state.watchlist.has(ticker);
+    return `<li class="wl-result-item${added ? " wl-added" : ""}${i === wlActiveIdx ? " wl-active" : ""}" data-t="${ticker}" data-idx="${i}">
+      <span class="wl-result-name">${flag} ${d.n}</span>
+      <span class="wl-result-meta">${ticker}${price}${added ? " ✓" : ""}</span>
+    </li>`;
+  }).join("");
   dropdown.querySelectorAll("li[data-t]").forEach(el => {
-    el.addEventListener("click", () => {
-      state.watchlist.add(el.dataset.t);
-      localStorage.setItem("watchlist", JSON.stringify([...state.watchlist]));
-      renderWatchlist();
-      document.getElementById("watchlistInput").value = "";
-      dropdown.hidden = true;
-      document.getElementById("watchlistSearchWrap").hidden = true;
-    });
+    el.addEventListener("mouseenter", () => { wlActiveIdx = +el.dataset.idx; highlightWatchlistActive(); });
+    el.addEventListener("click", () => selectWatchlistItem(el.dataset.t));
   });
+  positionWatchlistDropdown();
+}
+
+// キーボードのハイライト位置だけ更新（再描画はしない）
+function highlightWatchlistActive() {
+  const dropdown = document.getElementById("watchlistDropdown");
+  if (!dropdown) return;
+  dropdown.querySelectorAll("li[data-idx]").forEach(el => {
+    const on = +el.dataset.idx === wlActiveIdx;
+    el.classList.toggle("wl-active", on);
+    if (on) el.scrollIntoView({ block: "nearest" });
+  });
+}
+
+function selectWatchlistItem(ticker) {
+  if (!ticker) return;
+  state.watchlist.add(ticker);
+  localStorage.setItem("watchlist", JSON.stringify([...state.watchlist]));
+  renderWatchlist();
+  document.getElementById("watchlistInput").value = "";
+  closeWatchlistDropdown();
+  document.getElementById("watchlistSearchWrap").hidden = true;
+}
+
+function closeWatchlistDropdown() {
+  const dd = document.getElementById("watchlistDropdown");
+  if (dd) dd.hidden = true;
+  wlMatches = [];
+  wlActiveIdx = -1;
+}
+
+// position:fixed のドロップダウンを入力欄の真下に合わせる
+function positionWatchlistDropdown() {
+  const input = document.getElementById("watchlistInput");
+  const dd = document.getElementById("watchlistDropdown");
+  if (!input || !dd || dd.hidden) return;
+  const r = input.getBoundingClientRect();
+  dd.style.left = r.left + "px";
+  dd.style.top = (r.bottom + 4) + "px";
+  dd.style.width = r.width + "px";
+}
+
+// 入力欄でのキーボード操作（↓↑で選択移動、Enterで確定、Escで閉じる）
+function watchlistKeydown(e) {
+  const dd = document.getElementById("watchlistDropdown");
+  if (!dd || dd.hidden || wlMatches.length === 0) return;
+  if (e.key === "ArrowDown") {
+    e.preventDefault();
+    wlActiveIdx = (wlActiveIdx + 1) % wlMatches.length;
+    highlightWatchlistActive();
+  } else if (e.key === "ArrowUp") {
+    e.preventDefault();
+    wlActiveIdx = (wlActiveIdx - 1 + wlMatches.length) % wlMatches.length;
+    highlightWatchlistActive();
+  } else if (e.key === "Enter") {
+    e.preventDefault();
+    if (wlActiveIdx >= 0) selectWatchlistItem(wlMatches[wlActiveIdx][0]);
+  } else if (e.key === "Escape") {
+    closeWatchlistDropdown();
+  }
 }
 
 function bindTabs(containerId, attr, stateKey) {
@@ -616,15 +682,15 @@ async function init() {
     area.hidden = !area.hidden;
     if (!area.hidden) document.getElementById("watchlistInput").focus();
   });
-  document.getElementById("watchlistInput").addEventListener("input", e => {
-    watchlistSearch(e.target.value);
-  });
+  const wlInput = document.getElementById("watchlistInput");
+  wlInput.addEventListener("input", e => watchlistSearch(e.target.value));
+  wlInput.addEventListener("keydown", watchlistKeydown);
   document.addEventListener("click", e => {
-    if (!e.target.closest("#watchlistSection")) {
-      const dd = document.getElementById("watchlistDropdown");
-      if (dd) dd.hidden = true;
-    }
+    if (!e.target.closest("#watchlistSection")) closeWatchlistDropdown();
   });
+  // 入力欄がスクロール等で動いたら、固定表示のドロップダウン位置を追従させる
+  window.addEventListener("scroll", positionWatchlistDropdown, true);
+  window.addEventListener("resize", positionWatchlistDropdown);
 
   // ウォッチリストは localStorage のデータだけでも描画できる（データロード前）
   renderWatchlist();
