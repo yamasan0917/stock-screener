@@ -12,9 +12,10 @@ docs/data/latest.json に書き出す。GitHub Actions / タスクスケジュ�
 VERSION 履歴:
   3.0.0 — ウェブ版初期リリース（戦略タブ・シナリオ・ROIC）
   3.1.0 — ウォッチリスト機能追加・セクションUI分離・D/E・配当性向・SemVer導入
+  3.2.0 — 全戦略の指標を統一表示・各銘柄に3戦略分のスコアを保持（戦略切替でスコア動的変化）
 """
 
-VERSION = "3.1.0"
+VERSION = "3.2.0"
 
 import argparse
 import json
@@ -58,72 +59,69 @@ def display_name(ticker: str, market: str, fund: dict, jp_names: dict) -> str:
     return us_display_name(ticker, fund["name"])
 
 
-def value_row(t, s, f, c, market, jp_names, spark):
+# ------------------------------------------------------------
+# スコアは必要な指標が欠損していると計算できない（None を返す）。
+# 全戦略のスコアを各銘柄に持たせるため、安全ラッパーで包む。
+# 例: 金融株は revenue_growth=None → グロースのスコアは None になる。
+# ------------------------------------------------------------
+
+def safe_score_value(s, f, c):
+    if f.get("per") is None or f.get("pbr") is None or f.get("div_yield_pct") is None:
+        return None
+    return score_value(s, f, c)
+
+
+def safe_score_growth(s, f, c):
+    if f.get("revenue_growth") is None or f.get("earnings_growth") is None:
+        return None
+    return score_growth(s, f, c)
+
+
+def safe_score_defensive(s, f, c):
+    if f.get("per") is None or f.get("div_yield_pct") is None:
+        return None
+    return score_defensive(s, f, c)
+
+
+def full_row(t, s, f, cfgs, market, jp_names, spark):
+    """全指標 + 3戦略分のスコアを 1 銘柄にまとめた統一行。
+
+    どの戦略タブでも同じ列を表示でき、フロント側で戦略に応じて
+    score_value / score_growth / score_defensive を切り替えられる。
+    cfgs = {"value": c_v, "growth": c_g, "defensive": c_d}（現プリセットの市場別設定）
+    """
     de_raw = f.get("debt_to_equity")
-    return {
-        "ticker": t,
-        "name": display_name(t, market, f, jp_names),
-        "name_en": f["name"],
-        "sector": f["sector"],
-        "close": round(s["close"], 2),
-        "score": score_value(s, f, c),
-        "spark": spark,
-        "per": round(f["per"], 1),
-        "pbr": round(f["pbr"], 2),
-        "div": round(f["div_yield_pct"], 2),
-        "roe": round(f["roe"] * 100, 1) if f["roe"] is not None else None,
-        "de": round(de_raw / 100.0, 2) if de_raw is not None else None,  # D/E比率(倍)に変換
-        "roic_avg": f.get("roic_avg"),
-        "roic_yrs": f.get("roic_years"),
-        "roic_tr": f.get("roic_trend"),
-        "rsi": round(s["rsi"], 1),
-        "gc": bool(s["sma25"] > s["sma50"]),
-        "vt": s["value_traded20"],
-    }
-
-
-def growth_row(t, s, f, c, market, jp_names, spark):
-    return {
-        "ticker": t,
-        "name": display_name(t, market, f, jp_names),
-        "name_en": f["name"],
-        "sector": f["sector"],
-        "close": round(s["close"], 2),
-        "score": score_growth(s, f, c),
-        "spark": spark,
-        "revg": round(f["revenue_growth"] * 100, 1),
-        "epsg": round(f["earnings_growth"] * 100, 1),
-        "roic_avg": f.get("roic_avg"),
-        "roic_yrs": f.get("roic_years"),
-        "roic_tr": f.get("roic_trend"),
-        "rsi": round(s["rsi"], 1),
-        "cci": round(s["cci"], 0),
-        "k": round(s["stoch_k"], 1),
-        "d": round(s["stoch_d"], 1),
-        "dev": round((s["close"] / s["sma25"] - 1.0) * 100, 1),
-        "vt": s["value_traded20"],
-    }
-
-
-def defensive_row(t, s, f, c, market, jp_names, spark):
     pr = f.get("payout_ratio")
+    rg = f.get("revenue_growth")
+    eg = f.get("earnings_growth")
     return {
         "ticker": t,
         "name": display_name(t, market, f, jp_names),
         "name_en": f["name"],
         "sector": f["sector"],
         "close": round(s["close"], 2),
-        "score": score_defensive(s, f, c),
         "spark": spark,
-        "div": round(f["div_yield_pct"], 2),
-        "payout": round(pr * 100.0, 1) if pr is not None else None,  # 配当性向（%）
-        "per": round(f["per"], 1),
-        "roe": round(f["roe"] * 100, 1) if f["roe"] is not None else None,
+        # --- 戦略別スコア（選択中の戦略でフロントが切り替える）---
+        "score_value": safe_score_value(s, f, cfgs["value"]),
+        "score_growth": safe_score_growth(s, f, cfgs["growth"]),
+        "score_defensive": safe_score_defensive(s, f, cfgs["defensive"]),
+        # --- 全指標 ---
+        "per": round(f["per"], 1) if f.get("per") is not None else None,
+        "pbr": round(f["pbr"], 2) if f.get("pbr") is not None else None,
+        "div": round(f["div_yield_pct"], 2) if f.get("div_yield_pct") is not None else None,
+        "roe": round(f["roe"] * 100, 1) if f.get("roe") is not None else None,
+        "de": round(de_raw / 100.0, 2) if de_raw is not None else None,  # D/E比率(倍)
+        "payout": round(pr * 100.0, 1) if pr is not None else None,       # 配当性向(%)
+        "revg": round(rg * 100, 1) if rg is not None else None,
+        "epsg": round(eg * 100, 1) if eg is not None else None,
         "roic_avg": f.get("roic_avg"),
         "roic_yrs": f.get("roic_years"),
         "roic_tr": f.get("roic_trend"),
-        "beta": round(f["beta"], 2) if f["beta"] is not None else None,
+        "beta": round(f["beta"], 2) if f.get("beta") is not None else None,
         "rsi": round(s["rsi"], 1),
+        "cci": round(s["cci"], 0) if s.get("cci") is not None else None,
+        "dev": round((s["close"] / s["sma25"] - 1.0) * 100, 1) if s.get("sma25") else None,
+        "gc": bool(s["sma25"] > s["sma50"]),
         "sma200": bool(s["sma200"] is not None and s["close"] > s["sma200"]),
         "vt": s["value_traded20"],
     }
@@ -195,21 +193,21 @@ def run_market(market: str, presets: dict, args, jp_names: dict) -> tuple[dict, 
     results = {}
     for pname, cfg in presets.items():
         out = {}
-        c = cfg["value"][market]
-        rows = [value_row(t, snaps[t], funds[t], c, market, jp_names, sparkline(frames[t]))
-                for t in tech[(pname, "value")]
-                if t in funds and fund_pass_value(funds[t], c)]
-        out["value"] = sorted(rows, key=lambda r: -r["score"])
-        c = cfg["growth"][market]
-        rows = [growth_row(t, snaps[t], funds[t], c, market, jp_names, sparkline(frames[t]))
-                for t in tech[(pname, "growth")]
-                if t in funds and fund_pass_growth(funds[t], c)]
-        out["growth"] = sorted(rows, key=lambda r: -r["score"])
-        c = cfg["defensive"][market]
-        rows = [defensive_row(t, snaps[t], funds[t], c, market, jp_names, sparkline(frames[t]))
-                for t in tech[(pname, "defensive")]
-                if t in funds and fund_pass_defensive(funds[t], c)]
-        out["defensive"] = sorted(rows, key=lambda r: -r["score"])
+        cfgs = {"value": cfg["value"][market], "growth": cfg["growth"][market],
+                "defensive": cfg["defensive"][market]}
+
+        def mk(t):
+            return full_row(t, snaps[t], funds[t], cfgs, market, jp_names, sparkline(frames[t]))
+
+        rows = [mk(t) for t in tech[(pname, "value")]
+                if t in funds and fund_pass_value(funds[t], cfgs["value"])]
+        out["value"] = sorted(rows, key=lambda r: -(r["score_value"] or 0))
+        rows = [mk(t) for t in tech[(pname, "growth")]
+                if t in funds and fund_pass_growth(funds[t], cfgs["growth"])]
+        out["growth"] = sorted(rows, key=lambda r: -(r["score_growth"] or 0))
+        rows = [mk(t) for t in tech[(pname, "defensive")]
+                if t in funds and fund_pass_defensive(funds[t], cfgs["defensive"])]
+        out["defensive"] = sorted(rows, key=lambda r: -(r["score_defensive"] or 0))
         results[pname] = out
         print(f"[{market}] {pname}: バリュー{len(out['value'])} / グロース{len(out['growth'])}"
               f" / ディフェンシブ{len(out['defensive'])}")

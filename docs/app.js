@@ -5,6 +5,7 @@ const state = {
   data: null,
   market: "JP",
   strategy: "value",
+  scoreStrategy: "value",  // スコア計算に使う戦略（シナリオ選択中は直前の戦略を保持）
   preset: "standard",
   sortKey: "score",
   sortDesc: true,
@@ -15,47 +16,38 @@ const state = {
   scenarioOpt: {},       // シナリオごとの選択肢 {groupId: optionId}
 };
 
-// 列定義（key: 行データのキー / type: 表示整形方法）
-// ROIC平均とROIC傾向は別列に分離（矢印が何を示すか一目で分かるように）
-const COLUMNS = {
-  value: [
-    { key: "score", label: "スコア", type: "score", tip: "条件をどれだけ余裕を持って満たしたかの目安（0〜100）" },
-    { key: "close", label: "終値", type: "num", tip: "最新の終値" },
-    { key: "per", label: "PER", type: "num", tip: "株価収益率。低いほど利益に対して割安。日本株14倍以下・米国株18倍以下で抽出" },
-    { key: "pbr", label: "PBR", type: "num", tip: "株価純資産倍率。低いほど資産に対して割安。日本株1.2倍以下・米国株2.5倍以下で抽出" },
-    { key: "div", label: "配当", type: "pct", tip: "配当利回り（年率・税引前）。日本株3%以上・米国株2%以上で抽出" },
-    { key: "roe", label: "ROE", type: "pct", tip: "自己資本利益率。会社の稼ぐ力。8%以上で抽出（バリュートラップ除外）" },
-    { key: "de", label: "D/E", type: "de_ratio", tip: "負債÷自己資本の比率。借金の多さの目安。2倍超は要確認。銀行・保険・公益は業種特性上、高くなりやすい" },
-    { key: "roic_avg", label: "ROIC平均", type: "roic_val", tip: "投下資本利益率の過去平均（括弧内はデータ年数）。10%以上が優良の目安。銀行・保険は業種特性上、計算対象外（—）" },
-    { key: "roic_avg", label: "ROIC傾向", type: "roic_trend", tip: "ROICの直近トレンド。↗=改善傾向（競争優位が強まるシグナル）、↘=悪化傾向、—=データ不足またはほぼ横ばい。スコアのボーナス点にも使用" },
-    { key: "rsi", label: "RSI", type: "num", tip: "相対力指数。40〜65の範囲で抽出（過熱も売られすぎも除外）" },
-    { key: "gc", label: "トレンド", type: "gc", tip: "○=25日線が50日線の上（ゴールデンクロス状態）。MACD好転も条件に含む" },
-  ],
-  growth: [
-    { key: "score", label: "スコア", type: "score", tip: "条件をどれだけ余裕を持って満たしたかの目安（0〜100）" },
-    { key: "close", label: "終値", type: "num", tip: "最新の終値" },
-    { key: "revg", label: "売上成長", type: "pctSigned", tip: "直近四半期の前年同期比。15%以上で抽出" },
-    { key: "epsg", label: "EPS成長", type: "pctSigned", tip: "1株利益の前年同期比。20%以上で抽出" },
-    { key: "roic_avg", label: "ROIC平均", type: "roic_val", tip: "投下資本利益率の過去平均（括弧内はデータ年数）。10%以上が優良の目安。銀行・保険は業種特性上、計算対象外（—）" },
-    { key: "roic_avg", label: "ROIC傾向", type: "roic_trend", tip: "ROICの直近トレンド。↗=改善傾向（競争優位が強まるシグナル）、↘=悪化傾向、—=データ不足またはほぼ横ばい。スコアのボーナス点にも使用" },
-    { key: "rsi", label: "RSI", type: "num", tip: "相対力指数。65〜85の範囲で抽出（強い上昇モメンタムがある状態）" },
-    { key: "cci", label: "CCI", type: "num", tip: "商品チャンネル指数。100以上=ブレイクアウト状態で抽出" },
-    { key: "dev", label: "乖離", type: "pctSigned", tip: "25日移動平均線からの上方乖離率。20%超の急騰銘柄は除外済み" },
-  ],
-  defensive: [
-    { key: "score", label: "スコア", type: "score", tip: "条件をどれだけ余裕を持って満たしたかの目安（0〜100）" },
-    { key: "close", label: "終値", type: "num", tip: "最新の終値" },
-    { key: "div", label: "配当", type: "pct", tip: "配当利回り（年率・税引前）。日本株2.5%以上・米国株2%以上で抽出" },
-    { key: "payout", label: "配当性向", type: "payout", tip: "配当性向 = 配当額÷純利益。85%超は減配リスクゾーン（スコア－5点）、100%超はタコ足配当（利益以上の配当）で要注意（スコア－15点）" },
-    { key: "per", label: "PER", type: "num", tip: "株価収益率。過度に割高な銘柄を除外（日本株18倍以下・米国株22倍以下）" },
-    { key: "roe", label: "ROE", type: "pct", tip: "自己資本利益率。8%以上で抽出（稼げない高配当銘柄を除外）" },
-    { key: "roic_avg", label: "ROIC平均", type: "roic_val", tip: "投下資本利益率の過去平均（括弧内はデータ年数）。10%以上が優良の目安。銀行・保険は業種特性上、計算対象外（—）" },
-    { key: "roic_avg", label: "ROIC傾向", type: "roic_trend", tip: "ROICの直近トレンド。↗=改善傾向（競争優位が強まるシグナル）、↘=悪化傾向、—=データ不足またはほぼ横ばい。スコアのボーナス点にも使用" },
-    { key: "beta", label: "ベータ", type: "num", tip: "1未満=市場より値動きが穏やか。1.0以下で抽出（守りの銘柄のみ）" },
-    { key: "rsi", label: "RSI", type: "num", tip: "相対力指数。35〜70の範囲で抽出" },
-    { key: "sma200", label: "長期トレンド", type: "sma200", tip: "○=終値が200日移動平均線の上（長期上昇トレンド）。これを必須条件にしている" },
-  ],
-};
+// 統一列定義 — どの戦略を選んでも全指標を同じ並びで表示する。
+// スコア列は選択中の戦略に応じて score_value / score_growth / score_defensive を切り替える。
+const UNIFIED_COLUMNS = [
+  { key: "score",    label: "スコア",     type: "score",      tip: "選択中の戦略基準で算出したスコア（0〜100）。戦略タブを切り替えると、その戦略向けに再計算した値に変わります。「—」はその戦略の判定に必要な指標が取得できない銘柄（例: 金融株はグロース系の成長率が無いためグロースのスコアが付きません）" },
+  { key: "close",    label: "終値",       type: "num",        tip: "最新の終値" },
+  { key: "per",      label: "PER",       type: "num",        tip: "株価収益率。低いほど利益に対して割安（バリュー・ディフェンシブの判定に使用）" },
+  { key: "pbr",      label: "PBR",       type: "num",        tip: "株価純資産倍率。低いほど資産に対して割安（バリューの判定に使用）" },
+  { key: "div",      label: "配当",       type: "pct",        tip: "配当利回り（年率・税引前。バリュー・ディフェンシブの判定に使用）" },
+  { key: "roe",      label: "ROE",       type: "pct",        tip: "自己資本利益率。会社の稼ぐ力（8%以上が抽出条件）" },
+  { key: "de",       label: "D/E",       type: "de_ratio",   tip: "負債÷自己資本の比率。借金の多さの目安。2倍超は赤、1倍超は琥珀。銀行・保険・公益は業種特性上、高くなりやすい" },
+  { key: "payout",   label: "配当性向",   type: "payout",     tip: "配当額÷純利益。85%超は減配リスク（琥珀）、100%超はタコ足配当（赤）。ディフェンシブのスコアに反映" },
+  { key: "revg",     label: "売上成長",   type: "pctSigned",  tip: "直近四半期の売上・前年同期比（グロースの判定に使用。15%以上が条件）" },
+  { key: "epsg",     label: "EPS成長",    type: "pctSigned",  tip: "1株利益の前年同期比（グロースの判定に使用。20%以上が条件）" },
+  { key: "roic_avg", label: "ROIC平均",   type: "roic_val",   tip: "投下資本利益率の過去平均（括弧内はデータ年数）。10%以上が優良の目安。銀行・保険は業種特性上、計算対象外（—）。全戦略のスコアにボーナス加点" },
+  { key: "roic_avg", label: "ROIC傾向",   type: "roic_trend", tip: "ROICの直近トレンド。↗=改善傾向（競争優位が強まるシグナル）、↘=悪化傾向、—=データ不足またはほぼ横ばい" },
+  { key: "beta",     label: "ベータ",     type: "num",        tip: "市場全体に対する値動きの大きさ。1未満=市場より穏やか（ディフェンシブは1.0以下が条件）" },
+  { key: "rsi",      label: "RSI",       type: "num",        tip: "買われすぎ・売られすぎの体温計（0〜100）。70以上は過熱、30以下は売られすぎ" },
+  { key: "cci",      label: "CCI",       type: "num",        tip: "勢い（モメンタム）を測る指標。100以上はブレイクアウト状態（グロースの判定に使用）" },
+  { key: "dev",      label: "乖離",       type: "pctSigned",  tip: "25日移動平均線からの上方乖離率。大きすぎる（急騰しすぎ）銘柄はグロースで除外" },
+  { key: "gc",       label: "短期トレンド", type: "gc",        tip: "○=25日線が50日線の上（ゴールデンクロス状態）" },
+  { key: "sma200",   label: "長期トレンド", type: "sma200",    tip: "○=終値が200日移動平均線の上（長期上昇トレンド。ディフェンシブの必須条件）" },
+];
+
+// スコア計算に使う戦略（シナリオ選択中は直前に選んだ戦略を使う）
+function scoreStrategy() {
+  return state.strategy === "scenario" ? state.scoreStrategy : state.strategy;
+}
+
+// 行の「現在の戦略における」スコアを取り出す
+function effScore(r) {
+  return r["score_" + scoreStrategy()];
+}
 
 function rows() {
   const p = state.data?.presets?.[state.preset];
@@ -69,13 +61,16 @@ function fmtClose(v) {
 }
 
 function fmtCell(col, r) {
+  // スコア列は選択中の戦略に応じた値を引く（r.score ではなく r.score_<戦略>）
+  if (col.type === "score") {
+    const v = effScore(r);
+    if (v === null || v === undefined) return '<span class="score-na" title="この戦略の判定に必要な指標が取得できないため、スコアを算出できません">—</span>';
+    const lvl = v >= 80 ? "hi" : v >= 60 ? "" : "low";
+    return `<span class="score-bar-bg"><span class="score-bar ${lvl}" style="width:${Math.min(100, v)}%"></span></span><span class="score-num ${lvl}">${v.toFixed(0)}</span>`;
+  }
   const v = r[col.key];
   if (v === null || v === undefined) return "—";
   switch (col.type) {
-    case "score": {
-      const lvl = v >= 80 ? "hi" : v >= 60 ? "" : "low";
-      return `<span class="score-bar-bg"><span class="score-bar ${lvl}" style="width:${Math.min(100, v)}%"></span></span><span class="score-num ${lvl}">${v.toFixed(0)}</span>`;
-    }
     case "num":
       return col.key === "close" ? fmtClose(v) : v.toLocaleString();
     case "pct":
@@ -171,6 +166,8 @@ function updateMarketCounts() {
 }
 
 function render() {
+  // 戦略を選ぶたびに、スコア計算用の戦略を覚えておく（シナリオ時はこれを維持）
+  if (state.strategy !== "scenario") state.scoreStrategy = state.strategy;
   // シナリオ別モードはテーブルUIを隠して専用UIに切り替える
   const isScenario = state.strategy === "scenario";
   document.getElementById("scenarioArea").hidden = !isScenario;
@@ -184,7 +181,7 @@ function render() {
     return;
   }
 
-  const cols = COLUMNS[state.strategy];
+  const cols = UNIFIED_COLUMNS;
 
   // ヘッダー
   const head = document.getElementById("tableHead");
@@ -204,10 +201,11 @@ function render() {
     });
   });
 
-  // 行のソート
+  // 行のソート（スコア列は選択中の戦略のスコアで並べ替える）
+  const sortVal = r => state.sortKey === "score" ? effScore(r) : r[state.sortKey];
   let list = rows().slice();
   list.sort((a, b) => {
-    const av = a[state.sortKey], bv = b[state.sortKey];
+    const av = sortVal(a), bv = sortVal(b);
     const an = (av === null || av === undefined) ? -Infinity : +av;
     const bn = (bv === null || bv === undefined) ? -Infinity : +bv;
     return state.sortDesc ? bn - an : an - bn;
@@ -406,25 +404,39 @@ function renderScenario() {
     }).join("");
 }
 
-// ウォッチリストテーブルの列定義
-// スコア・ファンダ系はスクリーニング通過銘柄のみ表示（他は—）
+// ウォッチリストテーブルの列定義（スクリーニング表と同じ全指標を表示）。
+// スコアは選択中の戦略に連動。ファンダ系はスクリーニング通過銘柄のみ値が入る（他は—）。
 const WL_COLUMNS = [
-  { key: "close",    label: "終値",     type: "wl_close",   tip: "最新の終値" },
-  { key: "chg",     label: "前日比",   type: "wl_chg",     tip: "前日比（当日の値動き）" },
-  { key: "score",   label: "スコア",   type: "score",      tip: "スクリーニング通過時のスコア（0〜100）。スクリーニング対象外は—" },
-  { key: "per",     label: "PER",     type: "num",        tip: "株価収益率。スクリーニング通過銘柄のみ表示" },
-  { key: "div",     label: "配当",     type: "pct",        tip: "配当利回り（年率）。スクリーニング通過銘柄のみ表示" },
-  { key: "roe",     label: "ROE",     type: "pct",        tip: "自己資本利益率。スクリーニング通過銘柄のみ表示" },
-  { key: "roic_avg", label: "ROIC平均", type: "roic_val",   tip: "投下資本利益率の過去平均。スクリーニング通過銘柄のみ表示" },
-  { key: "roic_avg", label: "ROIC傾向", type: "roic_trend", tip: "ROICの直近トレンド。↗=改善傾向、↘=悪化傾向" },
-  { key: "rsi",     label: "RSI",     type: "num",        tip: "相対力指数（0〜100）。70以上は過熱、30以下は売られすぎが目安" },
-  { key: "gc",      label: "トレンド",  type: "gc",         tip: "○=25日線が50日線の上（ゴールデンクロス状態）" },
+  { key: "score",    label: "スコア",     type: "score",      tip: "選択中の戦略基準でのスコア（0〜100）。上部のスクリーニング戦略タブを切り替えると連動して変わります。スクリーニング対象外の銘柄は—" },
+  { key: "close",    label: "終値",       type: "wl_close",   tip: "最新の終値" },
+  { key: "chg",      label: "前日比",     type: "wl_chg",     tip: "前日比（当日の値動き）" },
+  { key: "per",      label: "PER",       type: "num",        tip: "株価収益率（スクリーニング通過銘柄のみ）" },
+  { key: "pbr",      label: "PBR",       type: "num",        tip: "株価純資産倍率（スクリーニング通過銘柄のみ）" },
+  { key: "div",      label: "配当",       type: "pct",        tip: "配当利回り（年率。スクリーニング通過銘柄のみ）" },
+  { key: "roe",      label: "ROE",       type: "pct",        tip: "自己資本利益率（スクリーニング通過銘柄のみ）" },
+  { key: "de",       label: "D/E",       type: "de_ratio",   tip: "負債÷自己資本。2倍超は赤、1倍超は琥珀" },
+  { key: "payout",   label: "配当性向",   type: "payout",     tip: "配当÷純利益。85%超は琥珀、100%超は赤（タコ足配当）" },
+  { key: "revg",     label: "売上成長",   type: "pctSigned",  tip: "直近四半期の売上・前年同期比" },
+  { key: "epsg",     label: "EPS成長",    type: "pctSigned",  tip: "1株利益の前年同期比" },
+  { key: "roic_avg", label: "ROIC平均",   type: "roic_val",   tip: "投下資本利益率の過去平均。10%以上が優良の目安" },
+  { key: "roic_avg", label: "ROIC傾向",   type: "roic_trend", tip: "ROICの直近トレンド。↗=改善傾向、↘=悪化傾向" },
+  { key: "beta",     label: "ベータ",     type: "num",        tip: "1未満=市場より値動きが穏やか" },
+  { key: "rsi",      label: "RSI",       type: "num",        tip: "買われすぎ・売られすぎの目安（0〜100）" },
+  { key: "cci",      label: "CCI",       type: "num",        tip: "勢い（モメンタム）。100以上はブレイクアウト" },
+  { key: "dev",      label: "乖離",       type: "pctSigned",  tip: "25日移動平均線からの上方乖離率" },
+  { key: "gc",       label: "短期トレンド", type: "gc",        tip: "○=25日線が50日線の上（ゴールデンクロス状態）" },
+  { key: "sma200",   label: "長期トレンド", type: "sma200",    tip: "○=終値が200日移動平均線の上（長期上昇トレンド）" },
 ];
 
-// 全プリセット・全戦略・全市場からティッカーを検索してファンダ等を返す
+// 全プリセット・全戦略・全市場からティッカーを検索してファンダ等を返す。
+// スコアはプリセットで変わるため、現在選択中のプリセットを優先して探す。
 function findScreeningData(ticker) {
   if (!state.data?.presets) return null;
-  for (const preset of Object.values(state.data.presets)) {
+  const presetNames = Object.keys(state.data.presets);
+  const ordered = [state.preset, ...presetNames.filter(p => p !== state.preset)];
+  for (const pname of ordered) {
+    const preset = state.data.presets[pname];
+    if (!preset) continue;
     for (const strategy of Object.values(preset)) {
       for (const marketRows of Object.values(strategy)) {
         if (!Array.isArray(marketRows)) continue;
@@ -437,10 +449,13 @@ function findScreeningData(ticker) {
 }
 
 // ウォッチリスト行オブジェクトを構築（ticker_data + screening data をマージ）
+// スクリーニング通過銘柄(sc)は全指標＋3戦略スコアを丸ごと取り込む。
+// 当日値（終値・前日比・RSI・GC）は ticker_data 側を優先して最新に保つ。
 function buildWatchlistRow(ticker) {
   const td = state.data?.ticker_data?.[ticker] || null;
   const sc = findScreeningData(ticker);
   return {
+    ...(sc || {}),          // score_value/growth/defensive, per, pbr, div, roe, de, payout, revg, epsg, beta, cci, dev, sma200 等
     ticker,
     name: sc?.name || td?.n || ticker,
     sector: sc?.sector || "",
@@ -449,13 +464,6 @@ function buildWatchlistRow(ticker) {
     chg: td?.g ?? null,
     rsi: td?.r ?? sc?.rsi ?? null,
     gc: td?.gc ?? sc?.gc ?? null,
-    score: sc?.score ?? null,
-    per: sc?.per ?? null,
-    div: sc?.div ?? null,
-    roe: sc?.roe ?? null,
-    roic_avg: sc?.roic_avg ?? null,
-    roic_yrs: sc?.roic_yrs ?? null,
-    roic_tr: sc?.roic_tr ?? null,
   };
 }
 
@@ -592,6 +600,7 @@ function bindTabs(containerId, attr, stateKey) {
       state.sortKey = "score";
       state.sortDesc = true;
       render();
+      renderWatchlist();  // 戦略・プリセット・市場の切替でウォッチリストのスコアも追従
     });
   });
 }

@@ -313,6 +313,36 @@ tbody tr:last-child td { border-bottom: none; }
 tbody tr:hover { background: var(--accent-soft); }
 td.name-cell, td.spark-cell, td.fav-cell { text-align: left; }
 
+/* 横長テーブル対策: ★と銘柄の2列を左に固定し、指標を横スクロールしても
+   どの銘柄の行か見失わないようにする */
+.table-scroll thead th:nth-child(1),
+.table-scroll thead th:nth-child(2),
+.table-scroll tbody td:nth-child(1),
+.table-scroll tbody td:nth-child(2) {
+  position: sticky;
+  z-index: 2;
+}
+.table-scroll thead th:nth-child(1),
+.table-scroll tbody td:nth-child(1) { left: 0; width: 34px; min-width: 34px; padding-right: 2px; }
+.table-scroll thead th:nth-child(2),
+.table-scroll tbody td:nth-child(2) { left: 34px; }
+.table-scroll thead th:nth-child(1),
+.table-scroll thead th:nth-child(2) { z-index: 3; }
+/* 固定セルの背景（スクロール時に下の列が透けないように） */
+.table-scroll tbody td:nth-child(1),
+.table-scroll tbody td:nth-child(2) { background: var(--card); }
+.table-scroll tbody tr:hover td:nth-child(1),
+.table-scroll tbody tr:hover td:nth-child(2) { background: var(--accent-soft); }
+.table-scroll thead th:nth-child(1),
+.table-scroll thead th:nth-child(2) { background: #f0f4f8; }
+/* 固定列と本体の境界を細い影で示す */
+.table-scroll thead th:nth-child(2),
+.table-scroll tbody td:nth-child(2) { box-shadow: 1px 0 0 var(--border); }
+@media (prefers-color-scheme: dark) {
+  .table-scroll thead th:nth-child(1),
+  .table-scroll thead th:nth-child(2) { background: #0d1a2e; }
+}
+
 .fav-btn {
   background: none;
   border: none;
@@ -349,6 +379,7 @@ td.name-cell, td.spark-cell, td.fav-cell { text-align: left; }
 .score-num { font-weight: 700; font-size: .9rem; }
 .score-num.hi  { color: var(--green); }
 .score-num.low { color: var(--gold); }
+.score-na { color: var(--border-strong); cursor: help; }
 
 .pos  { color: var(--green); font-weight: 600; }
 .neg  { color: var(--red);   font-weight: 600; }
