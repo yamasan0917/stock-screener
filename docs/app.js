@@ -453,7 +453,8 @@ function findScreeningData(ticker) {
 // 当日値（終値・前日比・RSI・GC）は ticker_data 側を優先して最新に保つ。
 function buildWatchlistRow(ticker) {
   const td = state.data?.ticker_data?.[ticker] || null;
-  const sc = findScreeningData(ticker);
+  // スクリーニング通過銘柄はその行を、非通過でも watchlist_data の常時表示データを使う
+  const sc = findScreeningData(ticker) || state.data?.watchlist_data?.[ticker] || null;
   return {
     ...(sc || {}),          // score_value/growth/defensive, per, pbr, div, roe, de, payout, revg, epsg, beta, cci, dev, sma200 等
     ticker,

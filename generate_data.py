@@ -186,9 +186,12 @@ def run_market(market: str, presets: dict, args, jp_names: dict) -> tuple[dict, 
 
     survivors = sorted(set().union(*tech.values()))
     print(f"[{market}] テクニカル通過（全プリセット合算）: {len(survivors)}銘柄")
+    # ウォッチリスト銘柄はスクリーニング非通過でもファンダを取得し、常時表示する
+    wl_in_snaps = [t for t in watchlist if t in snaps]
+    fund_targets = sorted(set(survivors) | set(wl_in_snaps))
     funds = fetch_fundamentals(
-        survivors, sleep_sec=config.INFO_FETCH_SLEEP,
-        fallback_prices={t: snaps[t]["close"] for t in survivors}) if survivors else {}
+        fund_targets, sleep_sec=config.INFO_FETCH_SLEEP,
+        fallback_prices={t: snaps[t]["close"] for t in fund_targets}) if fund_targets else {}
 
     results = {}
     for pname, cfg in presets.items():
@@ -211,6 +214,17 @@ def run_market(market: str, presets: dict, args, jp_names: dict) -> tuple[dict, 
         results[pname] = out
         print(f"[{market}] {pname}: バリュー{len(out['value'])} / グロース{len(out['growth'])}"
               f" / ディフェンシブ{len(out['defensive'])}")
+
+    # ウォッチリスト銘柄の常時表示用フル指標（標準プリセット基準でスコアを算出）。
+    # スクリーニング非通過でも PER/PBR/配当/スコア等がウォッチリストに出るようにする。
+    std = presets.get("standard") or next(iter(presets.values()))
+    std_cfgs = {"value": std["value"][market], "growth": std["growth"][market],
+                "defensive": std["defensive"][market]}
+    watchlist_data = {
+        t: full_row(t, snaps[t], funds[t], std_cfgs, market, jp_names, sparkline(frames[t]))
+        for t in wl_in_snaps if t in funds
+    }
+    print(f"[{market}] ウォッチリスト常時表示データ: {len(watchlist_data)}銘柄")
 
     last_dates = [pd.Timestamp(s["date"]).strftime("%Y-%m-%d") for s in snaps.values()]
     stats = {
@@ -249,7 +263,7 @@ def run_market(market: str, presets: dict, args, jp_names: dict) -> tuple[dict, 
             "sp": sparkline(df),
         }
     print(f"[{market}] ウォッチリスト用データ: {len(ticker_data)}銘柄")
-    return results, stats, quotes, ticker_data
+    return results, stats, quotes, ticker_data, watchlist_data
 
 
 def main():
@@ -276,17 +290,20 @@ def main():
     }
     all_quotes: dict[str, dict] = {}
     all_ticker_data: dict[str, dict] = {}
+    all_watchlist_data: dict[str, dict] = {}
     for m in markets:
-        results, stats, quotes, ticker_data = run_market(m, presets, args, jp_names)
+        results, stats, quotes, ticker_data, watchlist_data = run_market(m, presets, args, jp_names)
         payload["markets"][m] = stats
         all_quotes.update(quotes)
         all_ticker_data.update(ticker_data)
+        all_watchlist_data.update(watchlist_data)
         for pname, out in results.items():
             payload["presets"][pname]["value"][m] = out["value"]
             payload["presets"][pname]["growth"][m] = out["growth"]
             payload["presets"][pname]["defensive"][m] = out["defensive"]
     payload["scenarios"] = scenarios.build_payload(all_quotes)
     payload["ticker_data"] = all_ticker_data
+    payload["watchlist_data"] = all_watchlist_data
     payload["version"] = VERSION
 
     DOCS_DATA_DIR.mkdir(parents=True, exist_ok=True)
