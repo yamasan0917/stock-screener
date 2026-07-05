@@ -22,19 +22,24 @@ const UNIFIED_COLUMNS = [
   { key: "score",    label: "スコア",     type: "score",      tip: "選択中の戦略基準で算出したスコア（0〜100）。戦略タブを切り替えると、その戦略向けに再計算した値に変わります。「—」はその戦略の判定に必要な指標が取得できない銘柄（例: 金融株はグロース系の成長率が無いためグロースのスコアが付きません）" },
   { key: "close",    label: "終値",       type: "num",        tip: "最新の終値" },
   { key: "per",      label: "PER",       type: "num",        tip: "株価収益率。低いほど利益に対して割安（バリュー・ディフェンシブの判定に使用）" },
+  { key: "fpe",      label: "予想PER",    type: "num",        tip: "来期の予想利益ベースのPER。実績PERより低ければ増益予想（アナリスト予想ベースの参考値）" },
   { key: "pbr",      label: "PBR",       type: "num",        tip: "株価純資産倍率。低いほど資産に対して割安（バリューの判定に使用）" },
   { key: "div",      label: "配当",       type: "pct",        tip: "配当利回り（年率・税引前。バリュー・ディフェンシブの判定に使用）" },
   { key: "roe",      label: "ROE",       type: "pct",        tip: "自己資本利益率。会社の稼ぐ力（日本株8%・米国株10%以上が抽出条件）" },
   { key: "de",       label: "D/E",       type: "de_ratio",   tip: "負債÷自己資本の比率。借金の多さの目安。2倍超は赤、1倍超は琥珀。銀行・保険・公益は業種特性上、高くなりやすい" },
   { key: "payout",   label: "配当性向",   type: "payout",     tip: "配当額÷純利益。85%超は減配リスク（琥珀）、100%超はタコ足配当（赤）。ディフェンシブのスコアに反映" },
+  { key: "fcf",      label: "FCF利回り",  type: "fcf",        tip: "フリーキャッシュフロー÷時価総額。会社が実際に生み出す現金の利回り。マイナス（赤）は現金流出中＝配当の持続性に注意" },
   { key: "revg",     label: "売上成長",   type: "pctSigned",  tip: "直近四半期の売上・前年同期比（グロースの判定に使用。15%以上が条件）" },
   { key: "epsg",     label: "EPS成長",    type: "pctSigned",  tip: "1株利益の前年同期比（グロースの判定に使用。20%以上が条件）" },
+  { key: "gpath",    label: "型",         type: "gpath",      tip: "グロースの通過経路。🚀ブレイク=強い上昇の真っ最中（順張り） / 🎯押し目=上昇トレンド中の過熱が冷めた局面（高値掴みしにくい）" },
   { key: "roic_avg", label: "ROIC平均",   type: "roic_val",   tip: "投下資本利益率の過去平均（括弧内はデータ年数）。10%以上が優良の目安。銀行・保険は業種特性上、計算対象外（—）。全戦略のスコアにボーナス加点" },
   { key: "roic_avg", label: "ROIC傾向",   type: "roic_trend", tip: "ROICの直近トレンド。↗=改善傾向（競争優位が強まるシグナル）、↘=悪化傾向、—=データ不足またはほぼ横ばい" },
   { key: "beta",     label: "ベータ",     type: "num",        tip: "市場全体に対する値動きの大きさ。1未満=市場より穏やか（ディフェンシブは1.0以下が条件）" },
+  { key: "atr",      label: "1日変動",    type: "atr",        tip: "ATR(14日)÷株価。1日にだいたい何%動くかの目安。±5%超（琥珀）は値動きが荒く、±8%超（赤）はかなり荒い" },
   { key: "rsi",      label: "RSI",       type: "num",        tip: "買われすぎ・売られすぎの体温計（0〜100）。70以上は過熱、30以下は売られすぎ" },
   { key: "cci",      label: "CCI",       type: "num",        tip: "勢い（モメンタム）を測る指標。100以上はブレイクアウト状態（グロースの判定に使用）" },
   { key: "dev",      label: "乖離",       type: "pctSigned",  tip: "25日移動平均線からの上方乖離率。大きすぎる（急騰しすぎ）銘柄はグロースで除外" },
+  { key: "h52",      label: "52週高値比", type: "h52",        tip: "52週高値からの下落率。0%に近いほど高値圏でトレンド健在。-30%超（琥珀）は長期トレンドが崩れている可能性" },
   { key: "gc",       label: "短期トレンド", type: "gc",        tip: "○=25日線が50日線の上（ゴールデンクロス状態）" },
   { key: "sma200",   label: "長期トレンド", type: "sma200",    tip: "○=終値が200日移動平均線の上（長期上昇トレンド。ディフェンシブの必須条件）" },
 ];
@@ -109,6 +114,22 @@ function fmtCell(col, r) {
       return v ? '<span class="badge-gc">○ 上昇</span>' : "△ 転換中";
     case "sma200":
       return v ? '<span class="badge-gc">○ 上昇</span>' : "× 線の下";
+    case "gpath":
+      return v === "breakout"
+        ? '<span class="badge-gc" title="RSI・CCI・ストキャスが揃った強い上昇の真っ最中（順張り）">🚀 ブレイク</span>'
+        : '<span class="badge-dip" title="上昇トレンドを保ったまま過熱が冷めた押し目局面（高値掴みしにくい）">🎯 押し目</span>';
+    case "atr": {
+      const cls = v >= 8 ? "neg" : v >= 5 ? "warn" : "";
+      return `<span class="${cls}">±${v.toFixed(1)}%</span>`;
+    }
+    case "h52": {
+      const cls = v <= -30 ? "warn" : "";
+      return `<span class="${cls}">${v.toFixed(1)}%</span>`;
+    }
+    case "fcf": {
+      const cls = v < 0 ? "neg" : "";
+      return `<span class="${cls}">${v >= 0 ? "+" : ""}${v.toFixed(1)}%</span>`;
+    }
     default:
       return String(v);
   }
@@ -300,14 +321,13 @@ function renderStrategyInfo() {
       items: [
         "売上成長率 ≥ 15%（四半期の前年同期比）",
         "EPS成長率 ≥ 20%（四半期の前年同期比）",
-        "RSI 65〜85（強い上昇モメンタム）",
-        "CCI ≥ 100（ブレイクアウト状態）",
-        "ストキャスティクス ≥ 80（トレンド継続）",
-        "25日線乖離率 ≤ 20%（急騰しすぎは除外）",
+        "🚀 ブレイク型: RSI 65〜85 ＋ CCI ≥ 100 ＋ ストキャスティクス ≥ 80 ＋ 乖離20%以内（強い上昇の真っ最中に順張り）",
+        "🎯 押し目型: 終値 > 25日線 > 50日線 ＋ MACD好転 ＋ RSI 45〜65 ＋ 乖離10%以内（上昇トレンド中の過熱が冷めた局面＝高値掴みしにくい）",
+        "上の2経路のどちらかを満たせば通過（「型」列にバッジ表示）",
         "除外: 生活必需品・公益セクター、配当利回り2%超",
         "※ 直近1四半期の数値のため特別利益による一時的なEPS急増が混ざる可能性あり",
       ],
-      score: "スコア内訳（最大100点）: 売上成長の強さ 最大30点 ＋ EPS成長の強さ 最大30点 ＋ モメンタムの強さ 最大20点 ＋ 押し目度（急騰しすぎでない） 最大20点 ＋ ROICボーナス 最大10点",
+      score: "スコア内訳（最大100点）: 売上成長の強さ 最大30点 ＋ EPS成長の強さ 最大30点 ＋ モメンタムの強さ 最大20点（RSI45→85で線形） ＋ 押し目度（急騰しすぎでない） 最大20点 ＋ ROICボーナス 最大10点",
     },
     defensive: {
       label: "🛡️ 守り×安定配当（ディフェンシブ株）の選定基準",
@@ -344,6 +364,46 @@ function renderStrategyInfo() {
       `<li${isNote(i) ? ' class="criteria-note"' : ""}>${i}</li>`).join("")}</ul>
     <p class="score-breakdown">📊 ${c.score}</p>
   </div>`;
+}
+
+/* ---- 成績トラッキング（過去のおすすめのその後） ---- */
+
+function renderPerformance() {
+  const sec = document.getElementById("perfSection");
+  if (!sec) return;
+  const perf = state.data?.performance;
+  if (!perf || !perf.rows?.length) { sec.hidden = true; return; }
+  sec.hidden = false;
+
+  const stLabel = { value: "💎 割安×上昇開始", growth: "🚀 高成長×勢い", defensive: "🛡️ 守り×安定配当" };
+  const mkLabel = { JP: "🇯🇵 日本株", US: "🇺🇸 米国株" };
+  const fmt = v => (v === null || v === undefined) ? "—"
+    : `<span class="${v >= 0 ? "pos" : "neg"}">${v >= 0 ? "+" : ""}${v.toFixed(1)}%</span>`;
+
+  const body = perf.rows.map(r => {
+    const bench = r.market === "JP" ? "日経平均" : "S&P500";
+    // おすすめが市場平均に勝っていたか（同期間比較）
+    const win = (r.bench === null || r.bench === undefined) ? ""
+      : r.avg >= r.bench ? ' <span class="perf-win" title="同期間の市場平均を上回りました">◎</span>' : "";
+    return `<tr>
+      <td>${r.date}</td>
+      <td>${mkLabel[r.market]}</td>
+      <td>${stLabel[r.strategy]}</td>
+      <td>${fmt(r.avg)}${win}</td>
+      <td>${fmt(r.bench)} <span class="perf-bench-name">(${bench})</span></td>
+      <td>${r.n}銘柄</td>
+    </tr>`;
+  }).join("");
+
+  document.getElementById("perfBody").innerHTML = `<div class="table-scroll"><table>
+    <thead><tr>
+      <th>選定日</th><th>市場</th><th>戦略</th>
+      <th title="その日の標準基準・スコア上位${perf.top_n}銘柄を同額ずつ買ったと仮定した平均リターン">上位${perf.top_n}銘柄平均</th>
+      <th title="同じ期間に市場平均（日経平均/S&P500）がどれだけ動いたか">市場平均（同期間）</th>
+      <th>集計対象</th>
+    </tr></thead>
+    <tbody>${body}</tbody>
+  </table></div>`;
 }
 
 /* ---- シナリオ別おすすめ ---- */
@@ -401,6 +461,11 @@ function renderScenario() {
         : `<span class="${r.chg >= 0 ? "pos" : "neg"}">${r.chg >= 0 ? "+" : ""}${r.chg.toFixed(2)}%</span>`;
       const price = (r.close === null || r.close === undefined) ? "" :
         `<div class="sc-price">${fmtClose(r.close)} ${chg}</div>`;
+      // 財務注意フラグ（赤字・高D/E・タコ足配当・FCFマイナス）。
+      // テーマ株は財務リスクがあっても優良株と同じ顔で並ぶため明示する
+      const warn = (r.warn && r.warn.length)
+        ? `<div class="warn-badge" title="テーマ性とは別に財務面の注意点がある銘柄です。投資前に決算資料を確認してください">⚠ ${r.warn.join("・")}</div>`
+        : "";
       return `<div class="scenario-card">
         <div class="sc-head">
           <div>
@@ -409,7 +474,7 @@ function renderScenario() {
           </div>
           <div class="sc-quote">${price}${sparkSvg(r.spark)}</div>
         </div>
-        <p class="sc-reason">${r.reason}</p>
+        <p class="sc-reason">${r.reason}</p>${warn}
         <div class="links-cell">${linksHtml(r)}</div>
       </div>`;
     }).join("");
@@ -422,19 +487,23 @@ const WL_COLUMNS = [
   { key: "close",    label: "終値",       type: "wl_close",   tip: "最新の終値" },
   { key: "chg",      label: "前日比",     type: "wl_chg",     tip: "前日比（当日の値動き）" },
   { key: "per",      label: "PER",       type: "num",        tip: "株価収益率（スクリーニング通過銘柄のみ）" },
+  { key: "fpe",      label: "予想PER",    type: "num",        tip: "来期予想利益ベースのPER。実績PERより低ければ増益予想" },
   { key: "pbr",      label: "PBR",       type: "num",        tip: "株価純資産倍率（スクリーニング通過銘柄のみ）" },
   { key: "div",      label: "配当",       type: "pct",        tip: "配当利回り（年率。スクリーニング通過銘柄のみ）" },
   { key: "roe",      label: "ROE",       type: "pct",        tip: "自己資本利益率（スクリーニング通過銘柄のみ）" },
   { key: "de",       label: "D/E",       type: "de_ratio",   tip: "負債÷自己資本。2倍超は赤、1倍超は琥珀" },
   { key: "payout",   label: "配当性向",   type: "payout",     tip: "配当÷純利益。85%超は琥珀、100%超は赤（タコ足配当）" },
+  { key: "fcf",      label: "FCF利回り",  type: "fcf",        tip: "フリーキャッシュフロー÷時価総額。マイナス（赤）は現金流出中" },
   { key: "revg",     label: "売上成長",   type: "pctSigned",  tip: "直近四半期の売上・前年同期比" },
   { key: "epsg",     label: "EPS成長",    type: "pctSigned",  tip: "1株利益の前年同期比" },
   { key: "roic_avg", label: "ROIC平均",   type: "roic_val",   tip: "投下資本利益率の過去平均。10%以上が優良の目安" },
   { key: "roic_avg", label: "ROIC傾向",   type: "roic_trend", tip: "ROICの直近トレンド。↗=改善傾向、↘=悪化傾向" },
   { key: "beta",     label: "ベータ",     type: "num",        tip: "1未満=市場より値動きが穏やか" },
+  { key: "atr",      label: "1日変動",    type: "atr",        tip: "1日にだいたい何%動くかの目安。±5%超は値動きが荒い" },
   { key: "rsi",      label: "RSI",       type: "num",        tip: "買われすぎ・売られすぎの目安（0〜100）" },
   { key: "cci",      label: "CCI",       type: "num",        tip: "勢い（モメンタム）。100以上はブレイクアウト" },
   { key: "dev",      label: "乖離",       type: "pctSigned",  tip: "25日移動平均線からの上方乖離率" },
+  { key: "h52",      label: "52週高値比", type: "h52",        tip: "52週高値からの下落率。0%に近いほど高値圏" },
   { key: "gc",       label: "短期トレンド", type: "gc",        tip: "○=25日線が50日線の上（ゴールデンクロス状態）" },
   { key: "sma200",   label: "長期トレンド", type: "sma200",    tip: "○=終値が200日移動平均線の上（長期上昇トレンド）" },
 ];
@@ -534,9 +603,12 @@ function renderWatchlist() {
       ? `https://finance.yahoo.co.jp/quote/${r.ticker}`
       : `https://finance.yahoo.com/quote/${r.ticker}`;
     let tds = `<td class="fav-cell"><button class="fav-btn on" data-t="${r.ticker}" title="ウォッチリストから削除（★クリック）">★</button></td>`;
+    const wlWarn = (r.warn && r.warn.length)
+      ? `<div class="warn-badge" title="財務面の注意点。投資前に決算資料を確認してください">⚠ ${r.warn.join("・")}</div>`
+      : "";
     tds += `<td class="name-cell">
       <div class="stock-name"><a href="${link}" target="_blank" rel="noopener">${flag} ${r.name}</a></div>
-      <div class="stock-sub">${r.ticker}${r.sector ? "　" + r.sector : ""}</div>
+      <div class="stock-sub">${r.ticker}${r.sector ? "　" + r.sector : ""}</div>${wlWarn}
     </td>`;
     tds += `<td class="spark-cell">${r.spark ? sparkSvg(r.spark) : "—"}</td>`;
     for (const c of WL_COLUMNS) {
@@ -725,6 +797,7 @@ async function init() {
     }
     render();
     renderWatchlist();
+    renderPerformance();
   } catch (e) {
     document.getElementById("updated").textContent = "データの読み込みに失敗しました。時間をおいて再読み込みしてください。";
     console.error(e);

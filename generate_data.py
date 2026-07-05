@@ -15,9 +15,11 @@ VERSION 履歴:
   3.2.0 — 全戦略の指標を統一表示・各銘柄に3戦略分のスコアを保持（戦略切替でスコア動的変化）
   3.3.0 — 安全フィルタ強化: バリューに200日線必須、配当性向100%超・過剰D/Eをハードフィルタ化、
           US ROE基準10%へ、シナリオ鮮度警告（30日超）、核融合テーマの銘柄修正（東電→日本製鋼所）
+  3.4.0 — グロースに押し目型経路（高値掴み防止）、シナリオ/ウォッチリストに財務注意フラグ、
+          予想PER・FCF利回り・1日変動(ATR)・52週高値比の表示、成績トラッキング（過去のおすすめのその後）
 """
 
-VERSION = "3.3.0"
+VERSION = "3.4.0"
 
 import argparse
 import json
@@ -27,6 +29,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import pandas as pd
+import yfinance as yf
 
 import config
 import scenarios
@@ -36,7 +39,8 @@ from indicators import compute_snapshot
 from names_ja import us_display_name
 from screener import (download_prices, tech_pass_value, tech_pass_growth,
                       tech_pass_defensive, fund_pass_value, fund_pass_growth,
-                      fund_pass_defensive, score_value, score_growth, score_defensive)
+                      fund_pass_defensive, score_value, score_growth, score_defensive,
+                      growth_path)
 from universe import get_us_extended, get_jp_extended, get_jp_names, load_universe_file
 
 BASE_DIR = Path(__file__).parent
@@ -85,6 +89,38 @@ def safe_score_defensive(s, f, c):
     return score_defensive(s, f, c)
 
 
+def fcf_yield_pct(f: dict) -> float | None:
+    """FCF利回り（%）= フリーキャッシュフロー ÷ 時価総額。どちらか欠損ならNone。"""
+    if f.get("fcf") is None or not f.get("market_cap"):
+        return None
+    return f["fcf"] / f["market_cap"] * 100.0
+
+
+def warn_flags(f: dict) -> list[str]:
+    """初心者向けの財務注意フラグ。シナリオ・ウォッチリストのカードに⚠表示する。
+
+    スクリーニング通過銘柄はフィルタ済みだが、シナリオ（テーマ対応表）と
+    ウォッチリスト（ユーザー登録）はフィルタを通らないため、
+    テーマ株・人気株に財務リスクが潜んでいても気づけるようにする。
+    """
+    flags = []
+    ni = f.get("net_income")
+    if ni is not None and ni < 0:
+        flags.append("赤字")
+    de = f.get("debt_to_equity")
+    if (de is not None and de / 100.0 > 2.0
+            and f.get("sector") not in config.DE_EXEMPT_SECTORS):
+        flags.append(f"D/E {de / 100.0:.1f}倍")
+    pr = f.get("payout_ratio")
+    if (pr is not None and pr > 1.0
+            and f.get("sector") not in config.PAYOUT_EXEMPT_SECTORS):
+        flags.append(f"配当性向{pr * 100:.0f}%")
+    fy = fcf_yield_pct(f)
+    if fy is not None and fy < 0:
+        flags.append("FCFマイナス")
+    return flags
+
+
 def full_row(t, s, f, cfgs, market, jp_names, spark):
     """全指標 + 3戦略分のスコアを 1 銘柄にまとめた統一行。
 
@@ -96,6 +132,7 @@ def full_row(t, s, f, cfgs, market, jp_names, spark):
     pr = f.get("payout_ratio")
     rg = f.get("revenue_growth")
     eg = f.get("earnings_growth")
+    fy = fcf_yield_pct(f)
     return {
         "ticker": t,
         "name": display_name(t, market, f, jp_names),
@@ -109,6 +146,7 @@ def full_row(t, s, f, cfgs, market, jp_names, spark):
         "score_defensive": safe_score_defensive(s, f, cfgs["defensive"]),
         # --- 全指標 ---
         "per": round(f["per"], 1) if f.get("per") is not None else None,
+        "fpe": round(f["per_forward"], 1) if f.get("per_forward") is not None else None,
         "pbr": round(f["pbr"], 2) if f.get("pbr") is not None else None,
         "div": round(f["div_yield_pct"], 2) if f.get("div_yield_pct") is not None else None,
         "roe": round(f["roe"] * 100, 1) if f.get("roe") is not None else None,
@@ -126,11 +164,19 @@ def full_row(t, s, f, cfgs, market, jp_names, spark):
         "gc": bool(s["sma25"] > s["sma50"]),
         "sma200": bool(s["sma200"] is not None and s["close"] > s["sma200"]),
         "vt": s["value_traded20"],
+        # --- v3.4.0 追加指標 ---
+        "fcf": round(fy, 1) if fy is not None else None,           # FCF利回り（%）
+        "atr": (round(s["atr_pct"], 1)
+                if s.get("atr_pct") is not None else None),        # 1日変動の目安（%）
+        "h52": (round(s["high_52w_dist"] * 100, 1)
+                if s.get("high_52w_dist") is not None else None),  # 52週高値からの距離（%）
+        "gpath": growth_path(s, cfgs["growth"]),                   # グロース通過経路
+        "warn": warn_flags(f),                                     # 財務注意フラグ
     }
 
 
-def scenario_quotes(market: str, frames: dict) -> dict[str, dict]:
-    """シナリオ別おすすめ銘柄の日次データ（終値・前日比・スパークライン）を作る。"""
+def scenario_quotes(market: str, frames: dict, funds: dict) -> dict[str, dict]:
+    """シナリオ別おすすめ銘柄の日次データ（終値・前日比・スパークライン・財務注意）を作る。"""
     quotes = {}
     for t in scenarios.all_tickers(market):
         df = frames.get(t)
@@ -144,8 +190,94 @@ def scenario_quotes(market: str, frames: dict) -> dict[str, dict]:
             "close": round(float(closes.iloc[-1]), 2),
             "chg": round(chg, 2) if chg is not None else None,
             "spark": sparkline(df),
+            # テーマ株は財務リスクがあっても優良株と同じ顔で並ぶため注意フラグを付ける
+            "warn": warn_flags(funds[t]) if t in funds else None,
         }
     return quotes
+
+
+# ------------------------------------------------------------
+# 成績トラッキング（過去のおすすめのその後）
+#
+# 「設定値が適切か」への本質的な答えは過去の推奨がその後どう動いたかを
+# 測ること。ファンダの過去時点データは無料APIでは取れないため、
+# 遡及バックテストではなく docs/data/history/ に毎日残る実際の選定結果を
+# 使った「前向き記録」方式。日次実行のたびに最新の成績に更新される。
+#
+# 注意: 過去の close は選定時点の生値なので、その後に株式分割があった
+# 銘柄は大きくずれる（フロントに参考値である旨を明記）。
+# ------------------------------------------------------------
+
+BENCH_INDEX = {"JP": "^N225", "US": "^GSPC"}  # 市場平均（同期間比較用）
+PERF_TOP_N = 5  # 各日・各戦略のスコア上位N銘柄を集計対象にする
+
+
+def _bench_series() -> dict[str, pd.Series]:
+    """ベンチマーク指数の終値系列。取得失敗時は空dict（比較欄が—になるだけ）。"""
+    try:
+        raw = yf.download(list(BENCH_INDEX.values()), period="3mo", interval="1d",
+                          auto_adjust=True, group_by="ticker", progress=False)
+        out = {}
+        for m, sym in BENCH_INDEX.items():
+            ser = raw[sym]["Close"].dropna() if isinstance(raw.columns, pd.MultiIndex) \
+                else raw["Close"].dropna()
+            if len(ser):
+                out[m] = ser
+        return out
+    except Exception as e:
+        print(f"[perf] ベンチマーク取得失敗（比較欄なしで続行）: {type(e).__name__}")
+        return {}
+
+
+def build_performance(current_closes: dict[str, float]) -> dict | None:
+    """history/*.json から参照日（最古・約30日前・約7日前）を選び、
+    各日の標準プリセット・スコア上位N銘柄の現在までの平均リターンを集計する。"""
+    hist_dir = DOCS_DATA_DIR / "history"
+    today = f"{datetime.now(JST):%Y-%m-%d}"
+    files = sorted(p for p in hist_dir.glob("????-??-??.json") if p.stem < today)
+    if not files:
+        return None
+
+    def nearest(days_ago: int):
+        target = datetime.now(JST).replace(tzinfo=None) - timedelta(days=days_ago)
+        return min(files, key=lambda p: abs((datetime.strptime(p.stem, "%Y-%m-%d") - target).days))
+
+    chosen: list = []
+    for p in (files[0], nearest(30), nearest(7)):
+        if p not in chosen:
+            chosen.append(p)
+
+    bench = _bench_series()
+    rows = []
+    for p in sorted(chosen):
+        try:
+            d = json.loads(p.read_text(encoding="utf-8"))
+        except Exception:
+            continue
+        std = d.get("presets", {}).get("standard", {})
+        for st in ("value", "growth", "defensive"):
+            for m in ("JP", "US"):
+                picks = (std.get(st, {}).get(m) or [])[:PERF_TOP_N]
+                rets = [current_closes[r["ticker"]] / r["close"] - 1.0
+                        for r in picks
+                        if r.get("close") and current_closes.get(r["ticker"])]
+                if not rets:
+                    continue
+                b = None
+                ser = bench.get(m)
+                if ser is not None:
+                    past = ser.loc[:pd.Timestamp(p.stem)]
+                    if len(past):
+                        b = (float(ser.iloc[-1]) / float(past.iloc[-1]) - 1.0) * 100.0
+                rows.append({
+                    "date": p.stem, "strategy": st, "market": m, "n": len(rets),
+                    "avg": round(sum(rets) / len(rets) * 100.0, 1),
+                    "bench": round(b, 1) if b is not None else None,
+                })
+    if not rows:
+        return None
+    print(f"[perf] 成績トラッキング: 参照日 {[p.stem for p in sorted(chosen)]} / {len(rows)}行")
+    return {"top_n": PERF_TOP_N, "rows": rows}
 
 
 def run_market(market: str, presets: dict, args, jp_names: dict) -> tuple[dict, dict, dict, dict]:
@@ -188,9 +320,11 @@ def run_market(market: str, presets: dict, args, jp_names: dict) -> tuple[dict, 
 
     survivors = sorted(set().union(*tech.values()))
     print(f"[{market}] テクニカル通過（全プリセット合算）: {len(survivors)}銘柄")
-    # ウォッチリスト銘柄はスクリーニング非通過でもファンダを取得し、常時表示する
+    # ウォッチリスト銘柄はスクリーニング非通過でもファンダを取得し、常時表示する。
+    # シナリオ銘柄も財務注意フラグ（⚠赤字・高D/E等）の判定用に取得する
     wl_in_snaps = [t for t in watchlist if t in snaps]
-    fund_targets = sorted(set(survivors) | set(wl_in_snaps))
+    sc_in_snaps = [t for t in scenarios.all_tickers(market) if t in snaps]
+    fund_targets = sorted(set(survivors) | set(wl_in_snaps) | set(sc_in_snaps))
     funds = fetch_fundamentals(
         fund_targets, sleep_sec=config.INFO_FETCH_SLEEP,
         fallback_prices={t: snaps[t]["close"] for t in fund_targets}) if fund_targets else {}
@@ -235,7 +369,7 @@ def run_market(market: str, presets: dict, args, jp_names: dict) -> tuple[dict, 
         "source": source,
         "data_date": max(last_dates) if last_dates else None,
     }
-    quotes = scenario_quotes(market, frames)
+    quotes = scenario_quotes(market, frames, funds)
     print(f"[{market}] シナリオ銘柄の価格データ: {len(quotes)}/{len(scenarios.all_tickers(market))}")
 
     # ウォッチリスト検索用データ（全ユニバース: 価格データが取得できた全銘柄）
@@ -306,6 +440,8 @@ def main():
     payload["scenarios"] = scenarios.build_payload(all_quotes)
     payload["ticker_data"] = all_ticker_data
     payload["watchlist_data"] = all_watchlist_data
+    payload["performance"] = build_performance(
+        {t: v["c"] for t, v in all_ticker_data.items() if v.get("c")})
     payload["version"] = VERSION
 
     DOCS_DATA_DIR.mkdir(parents=True, exist_ok=True)

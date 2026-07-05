@@ -109,8 +109,8 @@ def tech_pass_value(s: dict, c) -> bool:
     )
 
 
-def tech_pass_growth(s: dict, c) -> bool:
-    """グロース戦略のテクニカル条件"""
+def tech_pass_growth_breakout(s: dict, c) -> bool:
+    """グロース戦略・ブレイクアウト型（強い上昇の真っ最中に乗る）"""
     dev = s["close"] / s["sma25"] - 1.0
     return (
         s["value_traded20"] >= c.min_value_traded
@@ -120,6 +120,36 @@ def tech_pass_growth(s: dict, c) -> bool:
         and s["close"] > s["sma25"]                                   # 上昇トレンド
         and dev <= c.max_dev_from_sma25                               # 過度な急騰の排除
     )
+
+
+def tech_pass_growth_pullback(s: dict, c) -> bool:
+    """グロース戦略・押し目型（上昇トレンドを保ったまま過熱が冷めた局面で拾う）
+
+    ブレイクアウト型は「すでに急騰した後」に点灯するため高値掴みになりやすい。
+    中長期目線では、トレンドが崩れていない押し目の方が有利な入り口になる。
+    """
+    dev = s["close"] / s["sma25"] - 1.0
+    return (
+        s["value_traded20"] >= c.min_value_traded
+        and s["close"] > s["sma25"] > s["sma50"]                      # 上昇トレンド維持
+        and s["macd"] > s["macd_signal"]                              # 勢いは上向きに転換済み
+        and c.pullback_rsi_min <= s["rsi"] <= c.pullback_rsi_max      # 過熱が冷めた帯
+        and dev <= c.pullback_max_dev                                 # 25日線の近く（押し目）
+    )
+
+
+def tech_pass_growth(s: dict, c) -> bool:
+    """グロース戦略のテクニカル条件（ブレイクアウト型 or 押し目型）"""
+    return tech_pass_growth_breakout(s, c) or tech_pass_growth_pullback(s, c)
+
+
+def growth_path(s: dict, c) -> str | None:
+    """通過経路の判定（表示バッジ用）。両方満たす場合はブレイクアウト優先。"""
+    if tech_pass_growth_breakout(s, c):
+        return "breakout"
+    if tech_pass_growth_pullback(s, c):
+        return "pullback"
+    return None
 
 
 # ------------------------------------------------------------
@@ -264,8 +294,10 @@ def score_growth(s: dict, f: dict, c) -> float:
     pts = 0.0
     pts += 30.0 * min(1.0, f["revenue_growth"] / (c.revenue_growth_min * 3))
     pts += 30.0 * min(1.0, f["earnings_growth"] / (c.earnings_growth_min * 3))
-    rsi_span = max(1e-9, c.rsi_max - c.rsi_min)
-    pts += 20.0 * min(1.0, (s["rsi"] - c.rsi_min) / rsi_span)             # モメンタムの強さ
+    # モメンタム: RSI45（押し目型の下限）→85（ブレイク型の上限）で線形に0→20点。
+    # 経路によらず単調な同一尺度にする。下側もクランプ（押し目型・他戦略の
+    # 通過銘柄にもこのスコアを表示するため、負の点が混ざらないように）
+    pts += 20.0 * max(0.0, min(1.0, (s["rsi"] - 45.0) / 40.0))
     dev = s["close"] / s["sma25"] - 1.0
     pts += 20.0 * max(0.0, 1.0 - dev / c.max_dev_from_sma25)              # 乖離の余地（押し目度）
     pts += roic_bonus(f)
@@ -338,6 +370,7 @@ def build_growth_rows(passed: list[str], snaps: dict, funds: dict, c, market: st
         rows.append({
             "ティッカー": t,
             "銘柄名": str(f["name"])[:18],
+            "型": {"breakout": "ブレイク", "pullback": "押し目"}.get(growth_path(s, c), "-"),
             "終値": round(s["close"], 2),
             "売上成長%": round(f["revenue_growth"] * 100, 1),
             "EPS成長%": round(f["earnings_growth"] * 100, 1),

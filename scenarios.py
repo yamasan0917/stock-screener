@@ -472,7 +472,9 @@ def build_payload(quotes: dict[str, dict]) -> dict:
                     rows.append({**st,
                                  "close": q.get("close"),
                                  "chg": q.get("chg"),
-                                 "spark": q.get("spark")})
+                                 "spark": q.get("spark"),
+                                 # 財務注意フラグ（赤字・高D/E等）。generate_data が付与
+                                 "warn": q.get("warn")})
                 stocks[market] = rows
             options.append({"id": opt["id"], "label": opt["label"],
                             "summary": opt["summary"], "stocks": stocks})

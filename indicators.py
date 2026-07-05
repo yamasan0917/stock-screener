@@ -68,6 +68,16 @@ def stochastic_slow(high: pd.Series, low: pd.Series, close: pd.Series,
     return slow_k, slow_d
 
 
+def atr_pct(high: pd.Series, low: pd.Series, close: pd.Series, period: int = 14) -> pd.Series:
+    """ATR（Wilder平滑化）を株価比%で返す。「1日にだいたい何%動くか」の体感指標。"""
+    prev_close = close.shift(1)
+    tr = pd.concat([high - low,
+                    (high - prev_close).abs(),
+                    (low - prev_close).abs()], axis=1).max(axis=1)
+    atr = tr.ewm(alpha=1.0 / period, adjust=False, min_periods=period).mean()
+    return atr / close * 100.0
+
+
 def crossed_above_recently(fast: pd.Series, slow: pd.Series, lookback: int = 5) -> bool:
     """直近 lookback 営業日以内に fast が slow を下から上に抜けたか。"""
     above = fast > slow
@@ -96,6 +106,9 @@ def compute_snapshot(df: pd.DataFrame) -> dict | None:
     stoch_k, stoch_d = stochastic_slow(high, low, close)
     # 流動性は出来高「株数」ではなく売買代金（終値×出来高）の20日平均で判定する
     value_traded20 = (close * vol).rolling(20, min_periods=20).mean()
+    atr14 = atr_pct(high, low, close, 14)
+    # 52週高値からの距離（終値ベース）。上場1年未満は取得できた期間の高値で代用
+    high_52w = close.rolling(252, min_periods=120).max()
 
     last = -1
     snap = {
@@ -114,6 +127,10 @@ def compute_snapshot(df: pd.DataFrame) -> dict | None:
         "stoch_d": float(stoch_d.iloc[last]),
         "value_traded20": float(value_traded20.iloc[last]),
         "cross_up_50_recent": crossed_above_recently(close, sma50, lookback=5),
+        # 参考表示用（欠損しても銘柄をスキップしない）
+        "atr_pct": None if pd.isna(atr14.iloc[last]) else float(atr14.iloc[last]),
+        "high_52w_dist": (None if pd.isna(high_52w.iloc[last]) or high_52w.iloc[last] <= 0
+                          else float(close.iloc[last] / high_52w.iloc[last] - 1.0)),
     }
     # 主要値に NaN が混じる銘柄はスキップ
     for key in ("close", "sma25", "sma50", "rsi", "macd", "cci", "stoch_k", "stoch_d", "value_traded20"):

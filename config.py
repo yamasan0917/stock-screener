@@ -57,6 +57,13 @@ class GrowthCriteria:
     stoch_k_min: float = 80.0
     stoch_d_min: float = 80.0
     max_dev_from_sma25: float = 0.20  # 25日SMAからの上方乖離率上限
+    # --- 押し目型（第2の通過経路）---
+    # ブレイクアウト型（RSI65+/CCI100+/ストキャ80+）は「すでに急騰した後」に
+    # 点灯するため高値掴みの入口になりやすい。中長期目線では
+    # 「上昇トレンドを保ったまま過熱が冷めた局面」で拾う経路を併設する
+    pullback_rsi_min: float = 45.0
+    pullback_rsi_max: float = 65.0
+    pullback_max_dev: float = 0.10   # 押し目の定義: 25日線乖離10%以内
 
 
 # ディフェンシブとみなすセクター（yfinance の sector 表記）
@@ -175,6 +182,7 @@ def loose_config() -> dict:
                 rsi_min=60.0, rsi_max=90.0, cci_min=80.0,
                 stoch_k_min=70.0, stoch_d_min=70.0,
                 max_dev_from_sma25=0.25,
+                pullback_rsi_min=40.0, pullback_max_dev=0.15,
             ),
             "JP": GrowthCriteria(
                 revenue_growth_min=0.12, earnings_growth_min=0.15,
@@ -182,6 +190,7 @@ def loose_config() -> dict:
                 rsi_min=60.0, rsi_max=90.0, cci_min=80.0,
                 stoch_k_min=70.0, stoch_d_min=70.0,
                 max_dev_from_sma25=0.25,
+                pullback_rsi_min=40.0, pullback_max_dev=0.15,
             ),
         },
         "defensive": {

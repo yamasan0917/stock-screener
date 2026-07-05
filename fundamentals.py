@@ -29,6 +29,8 @@ _FIELDS = [
     "marketCap", "beta",
     "payoutRatio",    # 配当性向（小数: 0.65 = 65%）。タコ足配当チェック用
     "debtToEquity",   # D/E比率（% 表記: 123.45 = 1.23x）。バリュー株の負債チェック用
+    "freeCashflow",       # FCF（現地通貨）。時価総額と合わせてFCF利回りを算出
+    "netIncomeToCommon",  # 純利益。マイナス=赤字（財務注意フラグ用）
 ]
 
 
@@ -91,6 +93,8 @@ def fetch_fundamentals(tickers: list[str], sleep_sec: float = 0.4,
             "beta": _to_float(raw["beta"]),  # 市場全体に対する値動きの大きさ（1未満=穏やか）
             "payout_ratio": _to_float(raw["payoutRatio"]),    # 小数 (0.65 = 65%)。None=無配or未取得
             "debt_to_equity": _to_float(raw["debtToEquity"]), # % 表記 (123.45 = D/E 1.23x)
+            "fcf": _to_float(raw["freeCashflow"]),            # フリーキャッシュフロー（現地通貨）
+            "net_income": _to_float(raw["netIncomeToCommon"]),  # 純利益。負=赤字
         }
         if i % 10 == 0 or i == total:
             print(f"  ファンダメンタルズ取得: {i}/{total}")

@@ -385,6 +385,9 @@ td.name-cell, td.spark-cell, td.fav-cell { text-align: left; }
 .neg  { color: var(--red);   font-weight: 600; }
 .warn { color: var(--warn);  font-weight: 600; }
 .badge-gc { font-size: .71rem; color: var(--green); font-weight: 600; }
+.badge-dip { font-size: .71rem; color: var(--accent); font-weight: 600; }  /* グロース押し目型 */
+/* 財務注意フラグ（シナリオ・ウォッチリスト。⚠赤字・高D/E・タコ足・FCFマイナス） */
+.warn-badge { color: var(--warn); font-size: .72rem; font-weight: 600; margin-top: 3px; }
 .roic-yrs  { font-size: .67rem; color: var(--muted); }
 .roic-arrow { font-size: 1rem; font-weight: 700; cursor: default; }
 .roic-arrow-flat { color: var(--muted); font-size: .9rem; cursor: default; }
@@ -475,6 +478,11 @@ td.name-cell, td.spark-cell, td.fav-cell { text-align: left; }
 .scenario-empty { color: var(--muted); font-size: .88rem; }
 /* シナリオ編集日が30日超過したときの警告（app.js が .stale を付与） */
 #scenarioAsOf.stale { color: var(--warn); font-weight: 600; }
+
+/* ══════════════════ 成績トラッキング ══════════════════ */
+.perf-note { font-size: .74rem; color: var(--muted); margin: 10px 2px 2px; line-height: 1.6; }
+.perf-bench-name { font-size: .7rem; color: var(--muted); }
+.perf-win { color: var(--green); font-weight: 700; }
 
 /* ══════════════════ Empty State ══════════════════ */
 .empty-state {
