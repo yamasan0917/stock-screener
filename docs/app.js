@@ -33,7 +33,7 @@ const UNIFIED_COLUMNS = [
   { key: "epsg",     label: "EPS成長",    type: "pctSigned",  tip: "1株利益の前年同期比（グロースの判定に使用。20%以上が条件）" },
   { key: "gpath",    label: "型",         type: "gpath",      tip: "グロースの通過経路。🚀ブレイク=強い上昇の真っ最中（順張り） / 🎯押し目=上昇トレンド中の過熱が冷めた局面（高値掴みしにくい）" },
   { key: "roic_avg", label: "ROIC平均",   type: "roic_val",   tip: "投下資本利益率の過去平均（括弧内はデータ年数）。10%以上が優良の目安。銀行・保険は業種特性上、計算対象外（—）。全戦略のスコアにボーナス加点" },
-  { key: "roic_avg", label: "ROIC傾向",   type: "roic_trend", tip: "ROICの直近トレンド。↗=改善傾向（競争優位が強まるシグナル）、↘=悪化傾向、—=データ不足またはほぼ横ばい" },
+  { key: "roic_tr",  label: "ROIC傾向",   type: "roic_trend", tip: "ROICの直近トレンド。↗=改善傾向（競争優位が強まるシグナル）、↘=悪化傾向、—=データ不足またはほぼ横ばい" },
   { key: "beta",     label: "ベータ",     type: "num",        tip: "市場全体に対する値動きの大きさ。1未満=市場より穏やか（ディフェンシブは1.0以下が条件）" },
   { key: "atr",      label: "1日変動",    type: "atr",        tip: "ATR(14日)÷株価。1日にだいたい何%動くかの目安。±5%超（琥珀）は値動きが荒く、±8%超（赤）はかなり荒い" },
   { key: "rsi",      label: "RSI",       type: "num",        tip: "買われすぎ・売られすぎの体温計（0〜100）。70以上は過熱、30以下は売られすぎ" },
@@ -222,8 +222,17 @@ function render() {
     });
   });
 
-  // 行のソート（スコア列は選択中の戦略のスコアで並べ替える）
-  const sortVal = r => state.sortKey === "score" ? effScore(r) : r[state.sortKey];
+  // 行のソート（スコア列は選択中の戦略のスコアで並べ替える）。
+  // 文字列値の列は数値化（+v）するとNaNになり順序が壊れるため、序列を数値に写像する
+  const ORDINAL = {
+    gpath: v => v === "breakout" ? 2 : v === "pullback" ? 1 : null,
+    roic_tr: v => v === "up" ? 2 : v === "flat" ? 1 : v === "down" ? 0 : null,
+  };
+  const sortVal = r => {
+    if (state.sortKey === "score") return effScore(r);
+    const v = r[state.sortKey];
+    return ORDINAL[state.sortKey] ? ORDINAL[state.sortKey](v) : v;
+  };
   let list = rows().slice();
   list.sort((a, b) => {
     const av = sortVal(a), bv = sortVal(b);
@@ -497,7 +506,7 @@ const WL_COLUMNS = [
   { key: "revg",     label: "売上成長",   type: "pctSigned",  tip: "直近四半期の売上・前年同期比" },
   { key: "epsg",     label: "EPS成長",    type: "pctSigned",  tip: "1株利益の前年同期比" },
   { key: "roic_avg", label: "ROIC平均",   type: "roic_val",   tip: "投下資本利益率の過去平均。10%以上が優良の目安" },
-  { key: "roic_avg", label: "ROIC傾向",   type: "roic_trend", tip: "ROICの直近トレンド。↗=改善傾向、↘=悪化傾向" },
+  { key: "roic_tr",  label: "ROIC傾向",   type: "roic_trend", tip: "ROICの直近トレンド。↗=改善傾向、↘=悪化傾向" },
   { key: "beta",     label: "ベータ",     type: "num",        tip: "1未満=市場より値動きが穏やか" },
   { key: "atr",      label: "1日変動",    type: "atr",        tip: "1日にだいたい何%動くかの目安。±5%超は値動きが荒い" },
   { key: "rsi",      label: "RSI",       type: "num",        tip: "買われすぎ・売られすぎの目安（0〜100）" },
