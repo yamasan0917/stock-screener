@@ -95,6 +95,11 @@ def download_prices(tickers: list[str], market: str, use_cache: bool) -> dict[st
 
 def tech_pass_value(s: dict, c) -> bool:
     """バリュー戦略のテクニカル条件"""
+    if c.require_above_sma200:
+        # 長期下降トレンド中の一時反発（落ちるナイフ）を除外。
+        # 200日分のデータがない銘柄は長期トレンドを判定できないので除外
+        if s["sma200"] is None or s["close"] <= s["sma200"]:
+            return False
     return (
         s["value_traded20"] >= c.min_value_traded
         and s["close"] > s["sma50"]                                   # トレンド水準
@@ -121,6 +126,24 @@ def tech_pass_growth(s: dict, c) -> bool:
 # ファンダメンタルズ判定
 # ------------------------------------------------------------
 
+def _payout_de_pass(f: dict, payout_max: float, de_max: float) -> bool:
+    """タコ足配当・過剰債務の安全フィルタ（バリュー/ディフェンシブ共通）。
+
+    データ欠損（None）は許容する: 無配銘柄の payoutRatio や新興企業の
+    debtToEquity は取得できないことが多く、欠損で足切りすると
+    健全な銘柄まで巻き添えになるため「取得できていて危険な場合のみ」除外。
+    """
+    payout = f.get("payout_ratio")
+    if (payout is not None and payout > payout_max
+            and f.get("sector") not in config.PAYOUT_EXEMPT_SECTORS):
+        return False  # 利益以上の配当（タコ足）→ 減配リスク大
+    de = f.get("debt_to_equity")  # yfinance は % 表記（200.0 = 2.0倍）
+    if (de is not None and de / 100.0 > de_max
+            and f.get("sector") not in config.DE_EXEMPT_SECTORS):
+        return False  # 過剰債務（バリュートラップの典型）
+    return True
+
+
 def fund_pass_value(f: dict, c) -> bool:
     if f["per"] is None or f["per"] > c.per_max:
         return False
@@ -129,6 +152,8 @@ def fund_pass_value(f: dict, c) -> bool:
     if f["div_yield_pct"] is None or f["div_yield_pct"] < c.div_yield_min_pct:
         return False
     if c.roe_min > 0 and (f["roe"] is None or f["roe"] < c.roe_min):
+        return False
+    if not _payout_de_pass(f, c.payout_max, c.de_max):
         return False
     return True
 
@@ -174,6 +199,8 @@ def fund_pass_defensive(f: dict, c) -> bool:
         return False
     # ベータ未取得（None）は欠損として許容。取得できていて市場より荒い銘柄は除外
     if f["beta"] is not None and f["beta"] > c.beta_max:
+        return False
+    if not _payout_de_pass(f, c.payout_max, c.de_max):
         return False
     return True
 

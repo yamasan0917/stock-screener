@@ -29,6 +29,13 @@ class ValueCriteria:
     min_value_traded: float   # 売買代金20日平均の下限（現地通貨）
     rsi_min: float = 40.0
     rsi_max: float = 65.0
+    # 長期下降トレンド（落ちるナイフ）除外。SMA50の上抜けだけでは
+    # 長期下落中の一時反発も通過してしまうため、200日線の上を必須にする
+    require_above_sma200: bool = True
+    # バリュートラップ除外: 配当2〜3%を必須にする戦略なので配当の持続性は生命線。
+    # 配当性向100%超（タコ足）と過剰債務は緩和プリセットでも緩めない
+    payout_max: float = 1.0   # 配当性向の上限（小数）。None無効
+    de_max: float = 2.0       # D/E比率の上限（倍）。DE_EXEMPT_SECTORS は対象外
 
 
 @dataclass
@@ -61,6 +68,16 @@ DEFENSIVE_SECTORS = ("Consumer Defensive", "Utilities", "Healthcare")
 # Healthcare は本物の高成長企業（創薬・医療機器）が多いので除外しない。
 GROWTH_EXCLUDE_SECTORS = ("Consumer Defensive", "Utilities")
 
+# D/E比率フィルタの対象外セクター。
+# 銀行・保険は預金・保険負債が本業の原資であり、高D/Eが正常な事業構造のため
+# 一律の負債上限を当てると金融セクター全体を不当に排除してしまう。
+DE_EXEMPT_SECTORS = ("Financial Services",)
+
+# 配当性向フィルタの対象外セクター。
+# REITは減価償却の影響でEPSベースの配当性向が恒常的に100%を超えるが、
+# 実態はFFO（キャッシュフロー）基準で判断すべきものでタコ足配当とは限らない。
+PAYOUT_EXEMPT_SECTORS = ("Real Estate",)
+
 
 @dataclass
 class DefensiveCriteria:
@@ -77,6 +94,10 @@ class DefensiveCriteria:
     rsi_min: float = 35.0
     rsi_max: float = 70.0
     require_above_sma200: bool = True  # 200日線の上（長期上昇トレンド）を必須にするか
+    # タコ足配当（利益以上の配当=減配リスク大）はハードフィルタで除外。
+    # 公益は設備産業で高D/Eが普通のため、上限はバリューより緩い3倍
+    payout_max: float = 1.0   # 配当性向の上限（小数）
+    de_max: float = 3.0       # D/E比率の上限（倍）。DE_EXEMPT_SECTORS は対象外
 
 
 # ------------------------------------------------------------
@@ -88,7 +109,7 @@ def standard_config() -> dict:
         "value": {
             "US": ValueCriteria(
                 per_max=18.0, pbr_max=2.5, div_yield_min_pct=2.0,
-                roe_min=0.08,
+                roe_min=0.10,   # 米企業のROE水準は日本より高い（中央値15%超）ため10%
                 min_value_traded=10_000_000,      # 1,000万ドル/日
             ),
             "JP": ValueCriteria(
@@ -109,7 +130,7 @@ def standard_config() -> dict:
         },
         "defensive": {
             "US": DefensiveCriteria(
-                div_yield_min_pct=2.0, per_max=22.0, roe_min=0.08,
+                div_yield_min_pct=2.0, per_max=22.0, roe_min=0.10,
                 beta_max=1.0, min_value_traded=10_000_000,
             ),
             "JP": DefensiveCriteria(
@@ -131,16 +152,20 @@ def standard_config() -> dict:
 
 def loose_config() -> dict:
     return {
+        # 注: 緩和するのはテクニカル条件のみ。配当性向・D/Eの安全フィルタ
+        # （payout_max / de_max）は初心者保護のため標準と同じ値を維持する
         "value": {
             "US": ValueCriteria(
                 per_max=22.0, pbr_max=3.5, div_yield_min_pct=1.5,
                 roe_min=0.05, min_value_traded=10_000_000,
                 rsi_min=35.0, rsi_max=70.0,
+                require_above_sma200=False,
             ),
             "JP": ValueCriteria(
                 per_max=18.0, pbr_max=1.6, div_yield_min_pct=2.5,
                 roe_min=0.05, min_value_traded=300_000_000,
                 rsi_min=35.0, rsi_max=70.0,
+                require_above_sma200=False,
             ),
         },
         "growth": {

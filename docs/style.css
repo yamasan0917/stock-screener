@@ -473,6 +473,8 @@ td.name-cell, td.spark-cell, td.fav-cell { text-align: left; }
   line-height: 1.65;
 }
 .scenario-empty { color: var(--muted); font-size: .88rem; }
+/* シナリオ編集日が30日超過したときの警告（app.js が .stale を付与） */
+#scenarioAsOf.stale { color: var(--warn); font-weight: 600; }
 
 /* ══════════════════ Empty State ══════════════════ */
 .empty-state {
